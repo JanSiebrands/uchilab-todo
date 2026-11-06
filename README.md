@@ -38,6 +38,8 @@ Alles zusammen, wie in der Pipeline: `./gradlew assembleDebug assembleRelease te
 
 **Gegenproben:** `tools/checks/counterprobes/run-all.sh` baut je Prüfung einen Fehler in eine Wegwerf-Kopie des Projekts ein und zeigt am Exit-Code, dass die Prüfung rot wird (bei Lint mit älterer Version: grün bleibt). Der eingecheckte Stand wird nicht verändert. Gegen einen anderen Stand: `COUNTERPROBE_SOURCE=<verzeichnis> tools/checks/counterprobes/run-all.sh`.
 
+Dass 03a, 04a und 04b nach einem Update von `activity-compose` gültig bleiben, zeigt `tools/checks/counterprobes/verify-version-independence.sh [<version>]` (braucht Netz, nicht in `run-all.sh`): Es hebt die Version in einer Kopie auf die angegebene bzw. neueste veröffentlichte, schreibt Lock-Stand und Prüfsummen neu und lässt die drei Gegenproben dagegen laufen.
+
 **App-Start auf dem Emulator:** bei laufendem Emulator `tools/checks/emulator-run.sh` (Debug, Release mit R8, Gegenprobe ohne Launcher-Eintrag). Die unsignierte Release-APK wird dabei mit einem frisch erzeugten Wegwerf-Schlüssel signiert. Den Emulator danach beenden.
 
 ## 5. Projektstruktur
@@ -80,6 +82,10 @@ Bei jedem Pull Request, Push auf `main` und täglich auf `main` läuft GitHub Ac
 5. Schwachstellenprüfung der Abhängigkeiten
 
 Lint meldet keine neueren Versionen (die Pipeline wird ohne Codeänderung nicht rot). Neue Versionen kommen als Pull Request von Renovate (`.github/workflows/renovate.yml`, wöchentlich, nur auf `main`, Lockfile und `verification-metadata.xml` im selben PR). Update-PRs werden nie automatisch gemergt. Renovate nutzt das Token des Bot-Kontos `uchilabbot` aus dem Repo-Secret `RENOVATE_TOKEN` (Entscheidung von Jan: keine GitHub App, damit keine zweite Identität Pull Requests freigeben kann). Einen Lauf von Hand startest du mit `gh workflow run renovate.yml --ref main`.
+
+Renovate gibt `./gradlew` nur ausgewählte Umgebungsvariablen weiter. `ANDROID_HOME` reicht der Workflow ausdrücklich über `RENOVATE_CUSTOM_ENV_VARIABLES` durch (`tools/checks/renovate-android-home.sh`). Die heutigen Gradle-Befehle von Renovate brauchen das SDK nicht, das ist eine Absicherung für künftige AGP-Versionen. Andere Variablen, vor allem `RENOVATE_TOKEN`, gelangen nicht zu Gradle (kein `exposeAllEnv`). Mehr in ADR 0002, Punkt 4.
+
+**Rote Läufe abfragen:** `tools/ci/main-run-status.sh` fragt mit `gh run list` (nur lesend) den jüngsten abgeschlossenen Lauf von `ci.yml` und `renovate.yml` auf `main` ab. Abgebrochene und übersprungene Läufe zählen nicht. Ausgabe je Workflow eine Zeile `GREEN|RED <workflow> <url> since=<datum> count=<n>` (`since`/`count`: seit wann und wie oft in Folge, höchstens über die letzten 20 Läufe), bei einem Fehler `ERROR <workflow> <grund>`. Exit-Code `0` alles grün, `1` mindestens ein Workflow rot, `2` Abfrage gescheitert oder kein abgeschlossener Lauf (hat Vorrang, die übrigen Zeilen stehen trotzdem in der Ausgabe). Der PO ruft das Skript täglich im Abgleich der Pull Requests auf und legt bei Rot oder Fehler ein Paperclip-Issue an. Andere Branches oder Workflows: `--branch <b> --workflow <datei>`. `ci.yml` lässt sich mit `gh workflow run ci.yml --ref <branch>` von Hand starten.
 
 Schlägt ein Schritt fehl, ist der Check rot. Alle Werkzeuge laufen im Runner, es werden keine Projektdaten an Dritte gesendet. Mehr dazu in `docs/adr/0001-technologie.md` und `docs/adr/0002-pipeline-pruefungen.md`.
 
