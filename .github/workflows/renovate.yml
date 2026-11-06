@@ -51,9 +51,9 @@ jobs:
       # Renovate passes only a fixed list of variables to ./gradlew, ANDROID_HOME is not on it. Today's
       # Renovate Gradle commands do not need the SDK; this is a safeguard for future AGP versions (ADR 0002).
       # Only ANDROID_HOME is passed on (customEnvVariables), never exposeAllEnv, so RENOVATE_TOKEN does not
-      # reach Gradle. Fails if the runner has no Android SDK.
+      # reach Gradle. Fails if the runner has no Android SDK (counterprobe 08 checks this step script).
       - name: Pass ANDROID_HOME to Renovate's Gradle commands
-        run: echo "RENOVATE_CUSTOM_ENV_VARIABLES=$(tools/checks/renovate-android-home.sh)" >> "$GITHUB_ENV"
+        run: tools/ci/set-renovate-android-home.sh
       - name: Run Renovate
         working-directory: .github/renovate
         env:

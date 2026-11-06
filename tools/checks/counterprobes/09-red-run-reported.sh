@@ -21,6 +21,7 @@ fixture three-red.yml "$(run 5 in_progress "")" "$(run 4 completed startup_failu
   "$(run 2 completed failure)" "$(run 1 completed success)"
 fixture empty.yml
 fixture only-cancelled.yml "$(run 1 completed cancelled)"
+fixture unknown.yml "$(run 2 completed action_required)" "$(run 1 completed success)"
 export FIXTURES="$work/fixtures" PATH="$work/fakebin:$PATH"
 run_status=tools/ci/main-run-status.sh
 
@@ -47,3 +48,8 @@ expect_green "empty run list gives exit 2" expect_exit 2 "$run_status" --workflo
 expect_green "only cancelled runs give exit 2" expect_exit 2 "$run_status" --workflow only-cancelled.yml
 expect_green "failed query gives exit 2" expect_exit 2 "$run_status" --workflow missing.yml
 expect_green "red and green together give exit 1" expect_exit 1 "$run_status" --workflow green.yml --workflow red.yml
+# An unknown conclusion (e.g. action_required) is an error, never green.
+expect_green "unknown conclusion gives exit 2" expect_exit 2 "$run_status" --workflow unknown.yml
+# Exit 2 has precedence over 1, also if the red workflow comes first.
+expect_green "red then failed query gives exit 2" expect_exit 2 "$run_status" --workflow red.yml --workflow missing.yml
+expect_green "failed query then red gives exit 2" expect_exit 2 "$run_status" --workflow missing.yml --workflow red.yml

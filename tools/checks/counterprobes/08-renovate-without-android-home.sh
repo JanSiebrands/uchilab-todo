@@ -18,3 +18,24 @@ check_json() {
   jq -e --arg sdk "$ANDROID_HOME" 'keys == ["ANDROID_HOME"] and .ANDROID_HOME == $sdk' <<<"$out" >/dev/null
 }
 expect_green "real SDK gives JSON with only ANDROID_HOME" check_json
+
+# The workflow step itself (tools/ci/set-renovate-android-home.sh, called by renovate.yml) must fail without
+# an SDK and must not write an empty value to GITHUB_ENV. Run with bash -e like GitHub Actions does.
+step=tools/ci/set-renovate-android-home.sh
+grep -qF "run: $step" .github/workflows/renovate.yml \
+  || { echo "COUNTERPROBE BROKEN: renovate.yml does not call $step" >&2; exit 2; }
+step_without_sdk() {
+  local env_file code=0
+  env_file="$(mktemp -p "$work")"
+  env -u ANDROID_HOME GITHUB_ENV="$env_file" bash -e "$step" || code=$?
+  [ ! -s "$env_file" ] || { echo "step wrote to GITHUB_ENV: $(cat "$env_file")"; return 0; }
+  return "$code"
+}
+expect_red "workflow step without ANDROID_HOME" "ANDROID_HOME is not set" step_without_sdk
+step_with_sdk() {
+  local env_file
+  env_file="$(mktemp -p "$work")"
+  GITHUB_ENV="$env_file" bash -e "$step"
+  [ "$(cat "$env_file")" = "RENOVATE_CUSTOM_ENV_VARIABLES=$(jq -cn --arg sdk "$ANDROID_HOME" '{ANDROID_HOME: $sdk}')" ]
+}
+expect_green "workflow step with real SDK writes the JSON to GITHUB_ENV" step_with_sdk
