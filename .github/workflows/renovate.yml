@@ -32,7 +32,7 @@ jobs:
           java-version: "21"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24"
+          node-version: "26"
       # Exact Renovate version with all transitive versions and integrity hashes from package-lock.json.
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: .github/renovate
