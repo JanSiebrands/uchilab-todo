@@ -5,6 +5,10 @@
   "automerge": false,
   "platformAutomerge": false,
   "dependencyDashboard": false,
+  "minimumReleaseAge": "3 days",
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "3 days"
+  },
   "packageRules": [
     {
       "description": "Android Gradle Plugin and Kotlin are released in lockstep with each other's compatibility.",
