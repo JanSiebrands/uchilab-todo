@@ -5,5 +5,6 @@ make_copy
 perl -0pi -e "s|\\s*<intent-filter>.*?</intent-filter>||s" app/src/main/AndroidManifest.xml
 ! grep -q "android.intent.category.LAUNCHER" app/src/main/AndroidManifest.xml \
   || { echo "COUNTERPROBE BROKEN: launcher entry not removed" >&2; exit 2; }
-expect_red "launcher entry missing (unit test)" "LauncherEntryTest" \
+# Expect a failing test, not "No tests found" (which would also mention the class name).
+expect_red "launcher entry missing (unit test)" "LauncherEntryTest > " \
   ./gradlew "${GRADLE_ARGS[@]}" testDebugUnitTest --tests "de.uchilab.todo.LauncherEntryTest"
