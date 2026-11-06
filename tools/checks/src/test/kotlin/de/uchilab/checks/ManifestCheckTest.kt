@@ -110,6 +110,18 @@ class ManifestCheckTest {
     }
 
     @Test
+    fun `explicitly allowed extra exported component is accepted, others still fail`() {
+        val xml = manifest(
+            components = LAUNCHER + """
+                <activity android:name="x.Helper" android:exported="true"/>
+                <activity android:name="x.Other" android:exported="true"/>
+            """.trimIndent(),
+        )
+        val violations = ManifestCheck.check(xml, extraExported = setOf("x.Helper"))
+        assertTrue(violations.single().contains("x.Other"))
+    }
+
+    @Test
     fun `malformed xml is reported instead of crashing`() {
         val violations = ManifestCheck.check("<manifest")
         assertTrue(violations.single().contains("parse"))

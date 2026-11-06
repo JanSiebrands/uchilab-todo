@@ -1,0 +1,16 @@
+# Known tracking, advertising, analytics and cloud SDKs. Safety net with a clear message;
+# the allowlist is the real gate. Pattern: "group" exact, "prefix.*" prefix and subgroups.
+com.google.firebase.*
+com.google.android.gms.*
+com.google.android.play.*
+com.crashlytics.*
+io.sentry.*
+com.facebook.*
+com.adjust.*
+com.appsflyer.*
+com.mixpanel.*
+com.amplitude.*
+com.segment.*
+com.onesignal.*
+com.applovin.*
+com.unity3d.ads.*

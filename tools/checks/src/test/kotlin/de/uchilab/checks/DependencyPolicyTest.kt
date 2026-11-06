@@ -63,4 +63,11 @@ class DependencyPolicyTest {
         val violations = policy.check(listOf("com.example:lib:1.0", "com.example:lib:1.0"))
         assertEquals(1, violations.size)
     }
+
+    @Test
+    fun `artifact pattern allows only that artifact`() {
+        val single = DependencyPolicy.parse(allowlist = "com.google.guava:listenablefuture", denylist = "")
+        assertEquals(emptyList<String>(), single.check(listOf("com.google.guava:listenablefuture:1.0")))
+        assertEquals(1, single.check(listOf("com.google.guava:guava:33.0")).size)
+    }
 }

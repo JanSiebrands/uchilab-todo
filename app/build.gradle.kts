@@ -6,14 +6,17 @@ plugins {
 
 kotlin { jvmToolchain(21) }
 
+// Exact versions per configuration in app/gradle.lockfile; also the input of the vulnerability scan.
+dependencyLocking { lockAllConfigurations() }
+
 android {
     namespace = "de.uchilab.todo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "de.uchilab.todo"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -31,11 +34,18 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Robolectric for recent Android SDKs reflects into JDK internals.
+            it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
     }
 
     lint {
         warningsAsErrors = true
         abortOnError = true
+        // androidx.lifecycle ships lint checks built against an older Kotlin analysis API than AGP's lint;
+        // lint skips them itself. Revisit when androidx.lifecycle is updated.
+        disable += "ObsoleteLintCustomCheck"
     }
 }
 
@@ -54,5 +64,9 @@ dependencies {
 
 privacyCheck {
     allowlist.set(rootProject.file("tools/checks/allowlist.txt"))
+    testAllowlist.set(rootProject.file("tools/checks/allowlist-test.txt"))
     denylist.set(rootProject.file("tools/checks/denylist.txt"))
 }
+
+// The checks are only trustworthy if their own tests (incl. negative tests) pass first.
+tasks.named("privacyCheck") { dependsOn(gradle.includedBuild("checks").task(":test")) }

@@ -1,0 +1,21 @@
+# Additional groups that are only allowed on unit test classpaths (never shipped in the APK).
+# Mostly transitive dependencies of Robolectric and Compose UI tests.
+junit
+org.hamcrest
+org.robolectric
+com.almworks.sqlite4java
+com.google.auto.value
+com.google.code.findbugs
+com.google.errorprone
+com.google.guava
+com.google.j2objc
+com.google.testparameterinjector
+com.ibm.icu
+com.squareup
+javax.annotation
+javax.inject
+org.bouncycastle
+org.conscrypt
+org.jspecify
+org.ow2.asm
+org.yaml
