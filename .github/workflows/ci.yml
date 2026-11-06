@@ -8,6 +8,8 @@ on:
   # the next pull request (ADR 0002).
   schedule:
     - cron: "0 4 * * *"
+  # Manual run, e.g. to recheck main or a branch: gh workflow run ci.yml --ref <branch>.
+  workflow_dispatch:
 
 # No secrets, no signing key, read-only token. External actions are pinned to commit SHAs.
 permissions:
