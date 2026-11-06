@@ -1,0 +1,22 @@
+# ADR 0002: Pipeline-Prüfungen nach Jans Review von PR #2
+
+Status: angenommen (Plan des Architekten in UCH-19, umgesetzt in UCH-21)
+
+## Kontext
+Jan hat PR #2 mit „Changes requested“ zurückgegeben (sieben Punkte, Story UCH-18). Jede Prüfung braucht eine Gegenprobe als Skript, die in der CI läuft. Die Pipeline darf ohne Codeänderung nicht rot werden, außer bei einer neuen Schwachstelle.
+
+## Entscheidungen
+1. **R8 über die Ergebnisdateien prüfen** (`r8Check`): Die Aufgabe `minifyReleaseWithR8` muss existieren, die gesamte R8-Konfiguration (`configuration.txt`, inklusive der Regeln aus Abhängigkeiten) darf kein `-dontshrink`, `-dontobfuscate` oder `-dontoptimize` enthalten, `mapping.txt` muss eine umbenannte und `usage.txt` eine entfernte Klasse enthalten. Synthetische Klassen (`$$`) zählen nicht, weil R8 sie auch unter einer Keep-All-Regel umbenennt. Nicht geprüft: zu breite, aber nicht pauschale Keep-Regeln (ohne willkürliche Schwelle nicht erkennbar, bleibt Sache des Reviews) und `isShrinkResources`.
+2. **Berechtigungen per Allowlist** (`tools/checks/permissions-allowlist.txt`) gegen die gemergten Manifeste. Die Verbotsliste (`INTERNET`, `ACCESS_NETWORK_STATE`) gilt weiter und hat Vorrang.
+3. **Lint ohne versions-, netz- und datumsabhängige Prüfungen.** Die abgeschalteten IDs stehen mit Begründung in `app/build.gradle.kts`. Veraltete Versionen meldet Renovate, Schwachstellen der Schwachstellen-Scan, der zusätzlich täglich auf `main` läuft.
+4. **Renovate, selbst betrieben als GitHub-Workflow.** Laut Renovate-Doku (Gradle-Manager) schreibt Renovate bei `<verify-metadata>true</verify-metadata>` die Datei `gradle/verification-metadata.xml` mit `./gradlew --write-verification-metadata` neu und aktualisiert Gradle-Lockfiles mit `--update-locks`. Dafür muss Renovate `./gradlew` ausführen dürfen (`allowedUnsafeExecutions: ["gradleWrapper"]`), was nur selbst betrieben einstellbar ist. JDK und Android-SDK sind auf dem Runner vorhanden. Dependabot aktualisiert `verification-metadata.xml` nicht. Die Renovate-Version ist mit `package-lock.json` fest gepinnt. Kein Automerge. Pull Requests mit dem Standard-`GITHUB_TOKEN` lösen keine CI aus. Deshalb braucht Renovate eine GitHub App mit eigenem Token. Die richtet Jan ein (Frage in UCH-18), das Team ändert keine Repo-Einstellungen. Die Secrets stehen nur dem Renovate-Workflow zur Verfügung, der nur auf `main` läuft.
+5. **Eigenes Wrapper-Skript** (`tools/checks/wrapper-check.sh`) statt der Action `gradle/actions/wrapper-validation`, weil sich die Gegenprobe als Skript nur gegen ein Skript ausführen lässt. Es vergleicht die JAR mit der offiziellen Prüfsumme der Version aus `distributionUrl` und verlangt `distributionSha256Sum`. Es läuft vor dem ersten `./gradlew`.
+6. **Backup-Regeln prüfen** (`BackupRulesCheck` in `privacyCheck`): Verweise im Manifest, Dateien vorhanden, Abschnitte für Cloud-Backup, Gerätetransfer und Transfer zu iOS vorhanden, alle neun Bereiche ausgeschlossen, kein `include`.
+7. **Emulator in der GitHub-CI** (`reactivecircus/android-emulator-runner`, auf SHA gepinnt, Image `aosp_atd` API 34 x86_64, ohne Google-Play-Dienste). `tools/checks/app-start.sh` startet Debug und Release (R8). Die unsignierte Release-APK wird im Runner mit einem frisch erzeugten Wegwerf-Schlüssel signiert. Der Release-Build-Typ bleibt unverändert, es gibt kein Secret.
+
+## Gegenproben
+`tools/checks/counterprobes/`: eine Datei je Fall. `expect_red` ist nur erfolgreich, wenn die Prüfung rot wird **und** die erwartete Meldung ausgibt. Alle Gegenproben arbeiten auf einer Wegwerf-Kopie. Gegen den Stand vor der Nachbesserung (`5049689`) schlagen alle Gegenproben für neue Prüfungen fehl. 03b, 04a und 04b prüfen Mechanismen, die es dort schon gab, und bleiben deshalb grün.
+
+## Folgen
+- Die Pipeline braucht länger (Gegenproben und Emulator laufen als eigene, parallele Jobs).
+- Der Positivnachweis für Renovate (Update-PR mit grüner CI) steht aus, bis Jan die GitHub App eingerichtet hat. Bis dahin endet der Renovate-Workflow mit einer klaren Fehlermeldung.

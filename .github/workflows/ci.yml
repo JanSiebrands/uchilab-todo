@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Daily run on main, so a newly published vulnerability turns the pipeline red without waiting for
+  # the next pull request (ADR 0002).
+  schedule:
+    - cron: "0 4 * * *"
 
 # No secrets, no signing key, read-only token. External actions are pinned to commit SHAs.
 permissions:
