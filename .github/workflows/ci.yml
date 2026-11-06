@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     name: Build, tests, lint, R8, privacy check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
@@ -32,7 +32,7 @@ jobs:
 
   counterprobes:
     name: Counterprobes (each check turns red on a built-in defect)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
@@ -46,7 +46,7 @@ jobs:
 
   emulator:
     name: App start on emulator (debug and release with R8)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
@@ -74,7 +74,7 @@ jobs:
 
   secrets:
     name: Secret scan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,7 +85,7 @@ jobs:
 
   vulnerabilities:
     name: Dependency vulnerability scan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: tools/checks/vuln-scan-selftest.sh
