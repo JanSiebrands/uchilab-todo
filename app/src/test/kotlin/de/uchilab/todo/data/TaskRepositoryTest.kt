@@ -320,4 +320,44 @@ class TaskRepositoryTest {
         val entity = TaskEntity(1, "MARKER-title", "MARKER-note", 0, "open")
         assertFalse(entity.toString().contains("MARKER"))
     }
+
+    private fun rawRow(id: Long): Pair<Long, String> = runBlocking {
+        db.useReaderConnection { connection ->
+            connection.usePrepared("SELECT created_at, status FROM task WHERE id = ?") { statement ->
+                statement.bindLong(1, id)
+                check(statement.step())
+                statement.getLong(0) to statement.getText(1)
+            }
+        }
+    }
+
+    @Test
+    fun `created_at is stored as unix milliseconds`() {
+        val instant = Instant.ofEpochMilli(1_700_000_000_123)
+        clock.now = instant
+        val task = add("Zeit")
+        assertEquals(instant.toEpochMilli(), rawRow(task.id.value).first)
+    }
+
+    @Test
+    fun `status is stored as the lowercase words open and done`() {
+        val task = add("Status")
+        assertEquals("open", rawRow(task.id.value).second)
+        runBlocking { repository.setStatus(task.id, TaskStatus.DONE) }
+        assertEquals("done", rawRow(task.id.value).second)
+    }
+
+    @Test
+    fun `an unknown stored status fails loading without revealing any value`() {
+        runBlocking {
+            db.useWriterConnection { connection ->
+                connection.usePrepared(
+                    "INSERT INTO task (title, note, created_at, status) VALUES ('MARKER-t', 'MARKER-n', 0, 'MARKER-x')",
+                ) { it.step() }
+            }
+        }
+        val error = runCatching { load() }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertFalse(error?.message.orEmpty().contains("MARKER"))
+    }
 }
