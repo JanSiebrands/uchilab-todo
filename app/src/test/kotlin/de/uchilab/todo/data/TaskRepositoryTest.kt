@@ -267,6 +267,17 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun `stored and loaded values are trimmed, also when changing`() {
+        val added = add("  Milch ", "  Notiz \n")
+        assertEquals("Milch", load().single().content.title)
+        assertEquals("Notiz", load().single().content.note)
+        runBlocking { repository.updateContent(added.id, content("  Brot\nButter ", "   ")) }
+        val changed = load().single()
+        assertEquals("Brot Butter", changed.content.title)
+        assertEquals(null, changed.content.note)
+    }
+
+    @Test
     fun `1000 tasks can be stored and loaded in order`() {
         repeat(1000) { add("Aufgabe $it") }
         val loaded = load()

@@ -94,4 +94,45 @@ class TaskContentTest {
         assertFalse(result.reasons.toString().contains("MARKER"))
         assertFalse(result.reasons.any { it.name.contains("MARKER") })
     }
+
+    private fun valid(title: String, note: String?) = (TaskContent.of(title, note) as Validated.Valid).content
+
+    @Test
+    fun `title and note are stored trimmed, inner whitespace stays`() {
+        val content = valid("  Milch  und  Brot ", "  Notiz\n\nzwei \n")
+        assertEquals("Milch  und  Brot", content.title)
+        assertEquals("Notiz\n\nzwei", content.note)
+    }
+
+    @Test
+    fun `every kind of line break in the title becomes exactly one space`() {
+        val breaks = listOf("\r\n", "\n", "\r", "\u0085", "\u2028", "\u2029")
+        for (lineBreak in breaks) {
+            assertEquals("Brot Butter", valid("Brot${lineBreak}Butter", null).title)
+        }
+        assertEquals("Brot  Butter", valid("Brot \nButter", null).title) // spaces are not merged
+        assertEquals("Milch", valid("Milch\n", null).title)
+    }
+
+    @Test
+    fun `consecutive line breaks each become a space`() {
+        assertEquals("a  b", valid("a\n\nb", null).title)
+        assertEquals("a  b", valid("a\r\n\r\nb", null).title)
+    }
+
+    @Test
+    fun `a title of only line breaks is empty`() {
+        assertEquals(setOf(InvalidReason.TITLE_EMPTY), reasons("\n\r\n\u2028", null))
+    }
+
+    @Test
+    fun `line breaks are replaced before the length check`() {
+        assertTrue(isValid("a".repeat(200) + "\n", null))
+        assertEquals(setOf(InvalidReason.TITLE_TOO_LONG), reasons("a".repeat(100) + "\n" + "a".repeat(100), null))
+    }
+
+    @Test
+    fun `the note keeps its line breaks`() {
+        assertEquals("a\r\nb\u2028c", valid("t", "a\r\nb\u2028c").note)
+    }
 }
