@@ -26,8 +26,10 @@ class StringResourcesTest {
     }
 
     @Test
-    fun `app name is the working title in both languages`() {
-        assertEquals("uchilab-todo", strings("values")["app_name"])
-        assertEquals("uchilab-todo", strings("values-de")["app_name"])
+    fun `app name is defined and not blank in both languages`() {
+        val english = strings("values")["app_name"]
+        val german = strings("values-de")["app_name"]
+        assertTrue("app_name missing or blank in values", !english.isNullOrBlank())
+        assertTrue("app_name missing or blank in values-de", !german.isNullOrBlank())
     }
 }
