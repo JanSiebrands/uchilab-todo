@@ -5,8 +5,12 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 
 interface PrivacyCheckExtension {
@@ -14,6 +18,8 @@ interface PrivacyCheckExtension {
     /** Additional groups that are only allowed on test classpaths. */
     val testAllowlist: RegularFileProperty
     val denylist: RegularFileProperty
+    /** Permissions allowed in the merged manifests, one per line; may be empty. */
+    val permissionAllowlist: RegularFileProperty
 }
 
 /**
@@ -29,7 +35,46 @@ class PrivacyCheckPlugin : Plugin<Project> {
             task.allowlist.set(extension.allowlist)
             task.testAllowlist.set(extension.testAllowlist)
             task.denylist.set(extension.denylist)
+            task.permissionAllowlist.set(extension.permissionAllowlist)
             task.dependsOn("processDebugMainManifest", "processReleaseMainManifest")
+        }
+        project.tasks.register("r8Check", R8CheckTask::class.java) { task ->
+            task.group = "verification"
+            task.description = "Checks that R8 shrank and obfuscated the release build (run with assembleRelease)."
+            // Lazy: if minify is off, the task does not exist and r8Check reports that instead of "task not found".
+            task.dependsOn(project.provider {
+                if (R8_TASK in project.tasks.names) listOf(project.tasks.named(R8_TASK)) else emptyList()
+            })
+            task.minifyTaskPresent.set(project.provider { R8_TASK in project.tasks.names })
+            task.mappingDir.set(project.layout.buildDirectory.dir("outputs/mapping/release"))
+        }
+    }
+
+    companion object {
+        const val R8_TASK = "minifyReleaseWithR8"
+    }
+}
+
+abstract class R8CheckTask : DefaultTask() {
+    @get:Input abstract val minifyTaskPresent: Property<Boolean>
+    @get:Internal abstract val mappingDir: DirectoryProperty
+
+    init {
+        outputs.upToDateWhen { false }
+    }
+
+    @TaskAction
+    fun run() {
+        val dir = mappingDir.get().asFile
+        fun read(name: String) = dir.resolve(name).takeIf { it.isFile }?.readText()
+        val violations = R8Check.check(
+            minifyTaskPresent.get(), read("configuration.txt"), read("mapping.txt"), read("usage.txt"),
+        )
+        if (violations.isEmpty()) {
+            logger.lifecycle("r8Check: OK (R8 shrank and obfuscated the release build)")
+        } else {
+            violations.forEach { logger.error("r8Check: $it") }
+            throw GradleException("r8Check failed with ${violations.size} violation(s)")
         }
     }
 }
@@ -38,17 +83,22 @@ abstract class PrivacyCheckTask : DefaultTask() {
     @get:InputFile abstract val allowlist: RegularFileProperty
     @get:InputFile abstract val testAllowlist: RegularFileProperty
     @get:InputFile abstract val denylist: RegularFileProperty
+    @get:InputFile abstract val permissionAllowlist: RegularFileProperty
 
     @TaskAction
     fun run() {
         val violations = mutableListOf<String>()
+        val allowedPermissions = permissionAllowlist.get().asFile.readLines()
+            .map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }.toSet()
         MERGED_MANIFESTS.forEach { (variant, path) ->
             val file = project.layout.buildDirectory.file(path).get().asFile
             if (!file.exists()) {
                 violations += "[$variant manifest] merged manifest not found: ${file.path}"
             } else {
                 val extra = if (variant == "debug") DEBUG_ONLY_EXPORTED else emptySet()
-                violations += ManifestCheck.check(file.readText(), extra).map { "[$variant manifest] $it" }
+                val manifest = file.readText()
+                violations += ManifestCheck.check(manifest, extra, allowedPermissions).map { "[$variant manifest] $it" }
+                violations += backupViolations(variant, manifest).map { "[$variant backup] $it" }
             }
         }
         val classpaths = project.configurations.filter {
@@ -73,6 +123,34 @@ abstract class PrivacyCheckTask : DefaultTask() {
         } else {
             violations.forEach { logger.error(it) }
             throw GradleException("privacyCheck failed with ${violations.size} violation(s)")
+        }
+    }
+
+    /**
+     * The files referenced from the merged manifest must exist in the app's own resources (main or the
+     * build type source set, any `res/xml*` qualifier) and every copy must switch backup and transfer off.
+     * App resources take precedence over library resources in the merge, so these are the files that ship.
+     */
+    private fun backupViolations(variant: String, manifest: String): List<String> {
+        val (extraction, fullBackup) = ManifestCheck.backupRuleReferences(manifest)
+        val checks = listOf(
+            Triple("android:dataExtractionRules", extraction, BackupRulesCheck::checkDataExtractionRules),
+            Triple("android:fullBackupContent", fullBackup, BackupRulesCheck::checkFullBackupContent),
+        )
+        return checks.flatMap { (attribute, reference, check) ->
+            if (reference == null || !reference.startsWith("@xml/")) {
+                return@flatMap listOf("$attribute must reference an @xml resource (found: ${reference ?: "missing"})")
+            }
+            val name = reference.removePrefix("@xml/")
+            val files = listOf("main", variant).flatMap { sourceSet ->
+                project.file("src/$sourceSet/res").listFiles { f -> f.isDirectory && f.name.matches(Regex("xml(-.+)?")) }
+                    ?.map { it.resolve("$name.xml") }?.filter { it.isFile }.orEmpty()
+            }
+            if (files.isEmpty()) {
+                listOf("$attribute: file res/xml/$name.xml not found")
+            } else {
+                files.flatMap { file -> check(file.readText()).map { "${file.relativeTo(project.projectDir)}: $it" } }
+            }
         }
     }
 

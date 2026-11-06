@@ -122,6 +122,45 @@ class ManifestCheckTest {
     }
 
     @Test
+    fun `permission not on the allowlist is a violation`() {
+        val violations = ManifestCheck.check(
+            manifest(permissions = """<uses-permission android:name="android.permission.READ_CONTACTS"/>"""),
+        )
+        assertTrue(violations.single().contains("android.permission.READ_CONTACTS"))
+    }
+
+    @Test
+    fun `allowlisted permission is accepted, also as uses-permission-sdk-23`() {
+        val xml = manifest(
+            permissions = """
+                <uses-permission android:name="x.ALLOWED"/>
+                <uses-permission-sdk-23 android:name="x.ALLOWED"/>
+                <uses-permission-sdk-23 android:name="x.OTHER"/>
+            """.trimIndent(),
+        )
+        val violations = ManifestCheck.check(xml, allowedPermissions = setOf("x.ALLOWED"))
+        assertTrue(violations.single().contains("x.OTHER"))
+    }
+
+    @Test
+    fun `forbidden permission stays forbidden even if allowlisted`() {
+        val violations = ManifestCheck.check(
+            manifest(permissions = """<uses-permission android:name="android.permission.INTERNET"/>"""),
+            allowedPermissions = setOf("android.permission.INTERNET"),
+        )
+        assertTrue(violations.single().startsWith("Forbidden permission"))
+    }
+
+    @Test
+    fun `backup rule references are read from the application element`() {
+        val xml = manifest(
+            applicationAttributes = """android:allowBackup="false" android:dataExtractionRules="@xml/a" android:fullBackupContent="@xml/b"""",
+        )
+        assertEquals("@xml/a" to "@xml/b", ManifestCheck.backupRuleReferences(xml))
+        assertEquals(null to null, ManifestCheck.backupRuleReferences(manifest()))
+    }
+
+    @Test
     fun `malformed xml is reported instead of crashing`() {
         val violations = ManifestCheck.check("<manifest")
         assertTrue(violations.single().contains("parse"))

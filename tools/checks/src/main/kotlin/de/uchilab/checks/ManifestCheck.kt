@@ -18,14 +18,22 @@ object ManifestCheck {
     )
     private val componentTags = listOf("activity", "activity-alias", "service", "receiver", "provider")
 
-    fun check(manifestXml: String, extraExported: Set<String> = emptySet()): List<String> {
+    /**
+     * @param allowedPermissions every `uses-permission` must be on this list (may be empty);
+     *   the forbidden permissions stay forbidden even if they are on it
+     */
+    fun check(
+        manifestXml: String,
+        extraExported: Set<String> = emptySet(),
+        allowedPermissions: Set<String> = emptySet(),
+    ): List<String> {
         val root = try {
             parse(manifestXml)
         } catch (e: Exception) {
             return listOf("Manifest could not be parsed: ${e.message}")
         }
         val violations = mutableListOf<String>()
-        violations += permissionViolations(root)
+        violations += permissionViolations(root, allowedPermissions)
         val application = root.getElementsByTagName("application").item(0) as? Element
         if (application == null) {
             violations += "Manifest has no <application> element"
@@ -41,12 +49,26 @@ object ManifestCheck {
         return violations
     }
 
-    private fun permissionViolations(root: Element): List<String> =
+    /**
+     * Resource references of `android:dataExtractionRules` and `android:fullBackupContent`
+     * (e.g. `@xml/data_extraction_rules`), null if the attribute is missing.
+     */
+    fun backupRuleReferences(manifestXml: String): Pair<String?, String?> {
+        val application = runCatching { parse(manifestXml) }.getOrNull()
+            ?.getElementsByTagName("application")?.item(0) as? Element ?: return null to null
+        return application.androidAttr("dataExtractionRules") to application.androidAttr("fullBackupContent")
+    }
+
+    private fun permissionViolations(root: Element, allowed: Set<String>): List<String> =
         listOf("uses-permission", "uses-permission-sdk-23").flatMap { tag ->
             val nodes = root.getElementsByTagName(tag)
             (0 until nodes.length).mapNotNull { index ->
-                val name = (nodes.item(index) as Element).androidAttr("name")
-                name?.takeIf { it in forbiddenPermissions }?.let { "Forbidden permission: $it" }
+                val name = (nodes.item(index) as Element).androidAttr("name") ?: "(unnamed)"
+                when {
+                    name in forbiddenPermissions -> "Forbidden permission: $name"
+                    name !in allowed -> "Permission not on the allowlist: $name (add it deliberately to tools/checks/permissions-allowlist.txt)"
+                    else -> null
+                }
             }
         }
 
