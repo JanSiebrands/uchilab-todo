@@ -38,6 +38,8 @@ Alles zusammen, wie in der Pipeline: `./gradlew assembleDebug assembleRelease te
 
 **Gegenproben:** `tools/checks/counterprobes/run-all.sh` baut je Prüfung einen Fehler in eine Wegwerf-Kopie des Projekts ein und zeigt am Exit-Code, dass die Prüfung rot wird (bei Lint mit älterer Version: grün bleibt). Der eingecheckte Stand wird nicht verändert. Gegen einen anderen Stand: `COUNTERPROBE_SOURCE=<verzeichnis> tools/checks/counterprobes/run-all.sh`.
 
+Dass die Gegenproben 10 bis 14b ohne ihre Prüfung fehlschlagen, zeigt `tools/checks/counterprobes/verify-stored-data-probes.sh [<commit>]` (nicht in `run-all.sh`): Es lässt sie gegen den Stand vor den Prüfungen (`2eced09`) laufen, 12a/12b zusätzlich gegen eine Kopie mit abgeschalteter Regel für exportierte Komponenten.
+
 Dass 03a, 04a und 04b nach einem Update von `activity-compose` gültig bleiben, zeigt `tools/checks/counterprobes/verify-version-independence.sh [<version>]` (braucht Netz, nicht in `run-all.sh`): Es hebt die Version in einer Kopie auf die angegebene bzw. neueste veröffentlichte, schreibt Lock-Stand und Prüfsummen neu und lässt die drei Gegenproben dagegen laufen.
 
 **App-Start auf dem Emulator:** bei laufendem Emulator `tools/checks/emulator-run.sh` (Debug, Release mit R8, Gegenprobe ohne Launcher-Eintrag). Die unsignierte Release-APK wird dabei mit einem frisch erzeugten Wegwerf-Schlüssel signiert. Den Emulator danach beenden.
@@ -61,10 +63,14 @@ docs/adr/                Architekturentscheidungen
 Die Domain kennt weder Android noch Compose; `domain` und `data` entstehen ab S2.
 
 ## 6. Datenschutz-Checks
-`./gradlew privacyCheck` prüft die zusammengeführten Manifeste (Debug und Release) und alle Abhängigkeiten:
+`./gradlew privacyCheck` prüft die zusammengeführten Manifeste (Debug und Release), den eigenen Quelltext der App und alle Abhängigkeiten:
 - keine Berechtigung `INTERNET` oder `ACCESS_NETWORK_STATE`, kein Klartext-Verkehr,
 - `allowBackup="false"`,
-- keine exportierten Komponenten außer der Start-Activity,
+- keine exportierten Komponenten außer der Start-Activity; die Start-Activity muss im Manifest stehen und hat genau einen `intent-filter` mit `MAIN`/`LAUNCHER` ohne `data` (Security P3),
+- das Release-Manifest ist nicht `debuggable` (Security P1),
+- kein `android:backupAgent`, kein `hasFragileUserData="true"`, kein `directBootAware="true"` an `application` oder einer Komponente (Security P2),
+- keine Logs im Quelltext der App: kein `android.util.Log`, `println`/`print`, `System.out`/`System.err`, `printStackTrace`, keine Logging-Bibliothek, kein `setQueryCallback` (Security P4, DSGVO P2),
+- kein externer, geteilter, Cache- oder Direct-Boot-Speicher im Quelltext der App (z. B. `getExternalFilesDir`, `MediaStore`, Storage Access Framework, `cacheDir`, `createTempFile`, `createDeviceProtectedStorageContext`) (Security P6, DSGVO P3). Geprüft werden alle `.kt`/`.java` unter `app/src/`, außer `test*`, `androidTest*` und `testFixtures*`. Treffer in Kommentaren zählen, Ausnahmen gibt es nicht; die Regeln stehen in `tools/checks/src/main/kotlin/de/uchilab/checks/SourceCheck.kt` und werden nur nach Rückfrage bei Security und DSGVO geändert,
 - jede Berechtigung muss in `tools/checks/permissions-allowlist.txt` stehen (auch über Abhängigkeiten eingeschleppte); `INTERNET` und `ACCESS_NETWORK_STATE` bleiben auch dann verboten,
 - Backup und Transfer aus: das Manifest verweist auf `dataExtractionRules` und `fullBackupContent`, beide Dateien existieren, `<cloud-backup>`, `<device-transfer>` und `<cross-platform-transfer platform="ios">` sind vorhanden, alle neun Bereiche sind ausgeschlossen, kein `<include>`,
 - jede Abhängigkeit muss auf der Allowlist stehen (`tools/checks/allowlist.txt` für die App, `tools/checks/allowlist-test.txt` zusätzlich für Tests). Bekannte Tracker stehen in `denylist.txt` und führen zu einer klaren Fehlermeldung.

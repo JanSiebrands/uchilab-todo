@@ -133,3 +133,20 @@ expect_green() {
   rm -f "$log"
   echo "counterprobe OK: $description: green as expected"
 }
+
+# write_probe_source <statement>: writes app/src/main/kotlin/de/uchilab/todo/Probe.kt with the statement on
+# line 6, inside a function with a Context parameter. privacyCheck does not compile, but the file is valid
+# Kotlin, so the counterprobe does not depend on that detail.
+write_probe_source() {
+  local file=app/src/main/kotlin/de/uchilab/todo/Probe.kt
+  [ -d "$(dirname "$file")" ] || { echo "COUNTERPROBE BROKEN: $(dirname "$file") not found" >&2; exit 2; }
+  cat >"$file" <<KOTLIN
+package de.uchilab.todo
+
+import android.content.Context
+
+fun probe(context: Context) {
+    $1
+}
+KOTLIN
+}

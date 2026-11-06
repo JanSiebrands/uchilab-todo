@@ -17,15 +17,20 @@ object ManifestCheck {
         "android.permission.ACCESS_NETWORK_STATE",
     )
     private val componentTags = listOf("activity", "activity-alias", "service", "receiver", "provider")
+    private const val ACTION_MAIN = "android.intent.action.MAIN"
+    private const val CATEGORY_LAUNCHER = "android.intent.category.LAUNCHER"
 
     /**
      * @param allowedPermissions every `uses-permission` must be on this list (may be empty);
      *   the forbidden permissions stay forbidden even if they are on it
+     * @param release true for the release manifest; only there `android:debuggable` is forbidden
+     *   (AGP always sets it in the debug build)
      */
     fun check(
         manifestXml: String,
         extraExported: Set<String> = emptySet(),
         allowedPermissions: Set<String> = emptySet(),
+        release: Boolean = false,
     ): List<String> {
         val root = try {
             parse(manifestXml)
@@ -45,7 +50,12 @@ object ManifestCheck {
         if (application.androidAttr("usesCleartextTraffic") == "true") {
             violations += "android:usesCleartextTraffic must not be \"true\""
         }
+        if (release && application.androidAttr("debuggable") == "true") {
+            violations += "android:debuggable must not be \"true\" in the release build (Security R1)"
+        }
+        violations += storageAttributeViolations(application)
         violations += componentViolations(application, extraExported)
+        violations += launcherViolations(application)
         return violations
     }
 
@@ -85,6 +95,50 @@ object ManifestCheck {
                 if (exported && !allowed) "Exported $tag not allowed: $name" else null
             }
         }
+
+    /** Security B2, B3, D3: attributes that store data outside the rules, on application and every component. */
+    private fun storageAttributeViolations(application: Element): List<String> {
+        val elements = listOf(application) + componentTags.flatMap { tag ->
+            val nodes = application.getElementsByTagName(tag)
+            (0 until nodes.length).map { nodes.item(it) as Element }
+        }
+        return elements.flatMap { element ->
+            val where = listOfNotNull(element.tagName, element.androidAttr("name")).joinToString(" ")
+            listOfNotNull(
+                element.androidAttr("backupAgent")?.let { "android:backupAgent is not allowed on $where (Security B2)" },
+                if (element.androidAttr("hasFragileUserData") == "true") {
+                    "android:hasFragileUserData=\"true\" is not allowed on $where (Security B3)"
+                } else null,
+                if (element.androidAttr("directBootAware") == "true") {
+                    "android:directBootAware=\"true\" is not allowed on $where (Security D3, DSGVO V1)"
+                } else null,
+            )
+        }
+    }
+
+    /**
+     * Security E1-E3: the launcher activity must exist (otherwise a rename would silently skip this rule) and
+     * its only intent filter is exactly MAIN/LAUNCHER without data.
+     */
+    private fun launcherViolations(application: Element): List<String> {
+        val nodes = application.getElementsByTagName("activity")
+        val launcher = (0 until nodes.length).map { nodes.item(it) as Element }
+            .firstOrNull { it.androidAttr("name") == LAUNCHER_ACTIVITY }
+            ?: return listOf("launcher activity $LAUNCHER_ACTIVITY not found in the merged manifest (Security E2)")
+        val filters = launcher.childElements("intent-filter")
+        val onlyMainLauncher = filters.size == 1 && filters.single().let { filter ->
+            filter.childElements("action").map { it.androidAttr("name") } == listOf(ACTION_MAIN) &&
+                filter.childElements("category").map { it.androidAttr("name") } == listOf(CATEGORY_LAUNCHER) &&
+                filter.childElements("data").isEmpty() &&
+                filter.childElements().all { it.tagName in setOf("action", "category") }
+        }
+        return if (onlyMainLauncher) emptyList()
+        else listOf("launcher activity must only have the MAIN/LAUNCHER intent filter (Security E2)")
+    }
+
+    private fun Element.childElements(tag: String? = null): List<Element> =
+        (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
+            .filter { tag == null || it.tagName == tag }
 
     private fun Element.androidAttr(name: String): String? =
         getAttributeNS(ANDROID_NS, name).takeIf { it.isNotEmpty() }
