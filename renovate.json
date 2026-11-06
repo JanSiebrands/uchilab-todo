@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency updates as pull requests; never merged automatically (see ADR 0002).",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "automerge": false,
+  "platformAutomerge": false,
+  "dependencyDashboard": false,
+  "packageRules": [
+    {
+      "description": "Android Gradle Plugin and Kotlin are released in lockstep with each other's compatibility.",
+      "groupName": "AGP and Kotlin",
+      "matchPackageNames": ["com.android.application", "org.jetbrains.kotlin.**", "org.jetbrains.kotlin:**"]
+    },
+    {
+      "description": "Renovate updating itself is fine, but only as a pull request like everything else.",
+      "matchFileNames": [".github/renovate/**"],
+      "groupName": "Renovate CLI"
+    }
+  ]
+}
