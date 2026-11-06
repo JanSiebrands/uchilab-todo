@@ -30,19 +30,24 @@ class TaskContent private constructor(val title: String, val note: String?) {
         const val MAX_TITLE_LENGTH = 200
         const val MAX_NOTE_LENGTH = 2000
 
+        // \r\n counts as one line break; then \n, \r, NEL (U+0085), LINE SEPARATOR, PARAGRAPH SEPARATOR.
+        private val LINE_BREAK = Regex("\r\n|[\n\r\u0085\u2028\u2029]")
+
+        /**
+         * Title: each line break becomes one space, then trim, then check the length.
+         * Note: trimmed, keeps its line breaks, empty after trimming means no note.
+         * The trimmed values are what gets stored.
+         */
         fun of(title: String, note: String?): Validated {
-            val trimmedTitle = title.trim()
-            val trimmedNote = note?.trim()?.takeIf { it.isNotEmpty() }
+            val cleanTitle = title.replace(LINE_BREAK, " ").trim()
+            val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }
             val reasons = buildSet {
-                if (trimmedTitle.isEmpty()) add(InvalidReason.TITLE_EMPTY)
-                if (graphemeCount(trimmedTitle) > MAX_TITLE_LENGTH) add(InvalidReason.TITLE_TOO_LONG)
-                if (trimmedNote != null && graphemeCount(trimmedNote) > MAX_NOTE_LENGTH) {
-                    add(InvalidReason.NOTE_TOO_LONG)
-                }
+                if (cleanTitle.isEmpty()) add(InvalidReason.TITLE_EMPTY)
+                if (graphemeCount(cleanTitle) > MAX_TITLE_LENGTH) add(InvalidReason.TITLE_TOO_LONG)
+                if (cleanNote != null && graphemeCount(cleanNote) > MAX_NOTE_LENGTH) add(InvalidReason.NOTE_TOO_LONG)
             }
-            // Open question to the PO (UCH-47): store the trimmed or the original value? Until answered, as entered.
             if (reasons.isNotEmpty()) return Validated.Invalid(reasons)
-            return Validated.Valid(TaskContent(title, if (trimmedNote == null) null else note))
+            return Validated.Valid(TaskContent(cleanTitle, cleanNote))
         }
 
         /** Counts what a person sees as one character (extended grapheme clusters). */

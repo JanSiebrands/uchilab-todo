@@ -33,6 +33,7 @@ erDiagram
 - Genau diese fünf Felder (DSGVO V2), keine weitere Tabelle. SQLite legt für `AUTOINCREMENT` `sqlite_sequence` an, Room `room_master_table`; beide enthalten keine Inhalte.
 - `status` wird explizit gemappt (`OPEN` ↔ `open`, `DONE` ↔ `done`), nicht über `Enum.name`.
 - Löschen ist ein physisches `DELETE` (DSGVO V4).
+- Gespeichert wird der getrimmte Wert (Titel und Notiz). Im Titel wird jeder Zeilenumbruch (`\r\n`, `\n`, `\r`, U+0085, U+2028, U+2029) zu einem Leerzeichen ersetzt, dann getrimmt, dann die Länge geprüft (Entscheidung PO, UCH-51 Nachtrag 2026-11-07). Die Notiz behält ihre Umbrüche.
 - Zeit kommt aus einer injizierten `java.time.Clock`.
 
 ## Reihenfolge
