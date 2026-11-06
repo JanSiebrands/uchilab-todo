@@ -1,0 +1,7 @@
+# Permissions allowed in the merged manifests (debug and release), one per line.
+# Every other permission, also one pulled in by a dependency, makes privacyCheck fail.
+# An empty list is allowed. INTERNET and ACCESS_NETWORK_STATE stay forbidden even if listed here.
+
+# Added by androidx.core: signature permission of this app itself, protects dynamically registered
+# receivers on Android < 13. Grants no access to user data.
+de.uchilab.todo.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

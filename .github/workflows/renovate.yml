@@ -1,0 +1,64 @@
+name: Renovate
+
+# Self-hosted Renovate (ADR 0002): runs on the GitHub runner, where JDK 21 and the Android SDK are
+# available, so it can rewrite the Gradle lockfiles and gradle/verification-metadata.xml in each update PR.
+# Only on main, weekly and on demand, never for pull requests. Update PRs are never merged automatically.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      # Renovate clones the repository itself with RENOVATE_TOKEN. This checkout only provides the wrapper
+      # check script and .github/renovate for npm ci, so GITHUB_TOKEN is not written to .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/checks/wrapper-check.sh
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      # Exact Renovate version with all transitive versions and integrity hashes from package-lock.json.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: .github/renovate
+      # Pull requests created with GITHUB_TOKEN do not trigger CI, so Renovate needs its own token: a classic
+      # token of the bot account uchilabbot (scopes repo, workflow), stored by Jan as repo secret RENOVATE_TOKEN.
+      # No GitHub App, so there is no second identity that could approve pull requests (board decision, ADR 0002).
+      # The token is only passed via env and never printed.
+      - name: Check that the Renovate token is configured
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          if [ -z "$RENOVATE_TOKEN" ]; then
+            echo "::error::Secret RENOVATE_TOKEN is missing (see ADR 0002)."
+            exit 1
+          fi
+      - name: Run Renovate
+        working-directory: .github/renovate
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          RENOVATE_PLATFORM: github
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          # Use the JDK and Android SDK of the runner instead of downloading tools.
+          RENOVATE_BINARY_SOURCE: global
+          # Needed so that Renovate may run ./gradlew to write lockfiles and verification metadata.
+          RENOVATE_ALLOWED_UNSAFE_EXECUTIONS: '["gradleWrapper"]'
+          LOG_LEVEL: info
+        run: npx --no-install renovate

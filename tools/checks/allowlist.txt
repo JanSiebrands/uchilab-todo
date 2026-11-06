@@ -1,0 +1,7 @@
+# Allowed dependency groups for everything that is shipped in the app (runtime classpaths).
+# Pattern: "group" exact, "prefix.*" prefix and subgroups. Changes are reviewed in the pull request.
+androidx.*
+org.jetbrains.*
+# Annotations and an empty stub artifact pulled in by androidx; no code of consequence.
+org.jspecify
+com.google.guava:listenablefuture
