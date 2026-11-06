@@ -31,6 +31,72 @@ replace() {
   OLD="$old" NEW="$new" perl -0pi -e 's/\Q$ENV{OLD}\E/$ENV{NEW}/g' "$file"
 }
 
+# Replaces the first match of a Perl regex in a file and fails if there is none. For values that change
+# over time (e.g. the current version in the catalog); fixed text uses replace().
+replace_regex() {
+  local file="$1" regex="$2" new="$3"
+  grep -qP -- "$regex" "$file" || { echo "COUNTERPROBE BROKEN: /$regex/ not found in $file" >&2; exit 2; }
+  REGEX="$regex" NEW="$new" perl -0pi -e 's/$ENV{REGEX}/$ENV{NEW}/m' "$file"
+}
+
+# Test library de.uchilab.probe:probe-lib in a local Maven repository of the copy (probe-repo/), versions
+# 1.0 and 2.0, so the locking and verification counterprobes do not depend on the version of a real
+# library. The repository only serves the group de.uchilab.probe. The app copy depends on probe-lib:1.0;
+# lock state and checksums for it are written first. JAR and POM are generated here, nothing is
+# downloaded. The dependency policy (privacyCheck) does not run in these counterprobes, so the group needs no
+# allowlist entry.
+use_probe_lib() {
+  local version dir
+  for version in 1.0 2.0; do
+    dir="probe-repo/de/uchilab/probe/probe-lib/$version"
+    mkdir -p "$dir/content"
+    echo "probe-lib $version" >"$dir/content/version.txt"
+    "${JAVA_HOME:+$JAVA_HOME/bin/}jar" --create --file "$dir/probe-lib-$version.jar" -C "$dir/content" .
+    rm -rf "$dir/content"
+    cat >"$dir/probe-lib-$version.pom" <<POM
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>de.uchilab.probe</groupId>
+  <artifactId>probe-lib</artifactId>
+  <version>$version</version>
+</project>
+POM
+  done
+  replace settings.gradle.kts "    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject" "    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri(\"probe-repo\")
+            content { includeGroup(\"de.uchilab.probe\") }
+        }
+    }
+}
+
+rootProject"
+  replace app/build.gradle.kts "    implementation(libs.androidx.compose.ui)
+" "    implementation(libs.androidx.compose.ui)
+    implementation(\"de.uchilab.probe:probe-lib:1.0\")
+"
+  # Lock state and checksums are only written where the project has them; the counterprobes must not set up
+  # the mechanism they check. Without locking, --write-locks writes nothing and 04a stays green (= fails).
+  # --write-verification-metadata would create a missing file, so it only runs if the file exists.
+  expect_green "write lock state for probe-lib 1.0" ./gradlew "${GRADLE_ARGS[@]}" --dependency-verification lenient :app:dependencies --write-locks
+  if [ -f gradle/verification-metadata.xml ]; then
+    expect_green "write checksums for probe-lib 1.0" ./gradlew "${GRADLE_ARGS[@]}" --write-verification-metadata sha256 :app:dependencies
+    grep -q 'name="probe-lib-1.0.jar"' gradle/verification-metadata.xml \
+      || { echo "COUNTERPROBE BROKEN: probe-lib 1.0 has no checksum" >&2; exit 2; }
+  else
+    echo "note: gradle/verification-metadata.xml missing, no checksums written"
+  fi
+}
+
 # expect_red <description> <expected message> <command...>
 # Succeeds only if the command fails AND its output contains the expected message. A red result for
 # another reason (network, lock state, typo) does not count.
