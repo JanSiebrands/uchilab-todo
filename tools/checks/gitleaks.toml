@@ -1,0 +1,12 @@
+# gitleaks configuration: default rules plus exclusion of generated and downloaded files.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated or downloaded files, not part of the source"
+paths = [
+  '''(^|/)\.tools/''',
+  '''(^|/)\.gradle/''',
+  '''(^|/)build/''',
+  '''(^|/)\.kotlin/''',
+]

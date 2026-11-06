@@ -8,6 +8,6 @@ root="$(cd "$here/../.." && pwd)"
 tools="$("$here/ensure-tools.sh")"
 
 if [ "${1:-}" = "--history" ]; then
-  exec "$tools/gitleaks" git --no-banner --redact "$root"
+  exec "$tools/gitleaks" git --no-banner --redact --config "$here/gitleaks.toml" "$root"
 fi
-exec "$tools/gitleaks" dir --no-banner --redact "${1:-$root}"
+exec "$tools/gitleaks" dir --no-banner --redact --config "$here/gitleaks.toml" "${1:-$root}"
