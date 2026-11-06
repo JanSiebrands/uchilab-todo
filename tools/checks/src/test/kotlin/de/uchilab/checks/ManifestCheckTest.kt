@@ -161,6 +161,82 @@ class ManifestCheckTest {
     }
 
     @Test
+    fun `debuggable is a violation in the release manifest only`() {
+        val xml = manifest(applicationAttributes = """android:allowBackup="false" android:debuggable="true"""")
+        assertTrue(ManifestCheck.check(xml, release = true).single().contains("Security R1"))
+        assertEquals(emptyList<String>(), ManifestCheck.check(xml, release = false))
+        val notDebuggable = manifest(applicationAttributes = """android:allowBackup="false" android:debuggable="false"""")
+        assertEquals(emptyList<String>(), ManifestCheck.check(notDebuggable, release = true))
+    }
+
+    @Test
+    fun `backupAgent is a violation on application and on a component, in debug and release`() {
+        val onApplication = manifest(applicationAttributes = """android:allowBackup="false" android:backupAgent=".Agent"""")
+        val onService = manifest(
+            components = LAUNCHER + """<service android:name="x.S" android:exported="false" android:backupAgent="x.A"/>""",
+        )
+        listOf(true, false).forEach { release ->
+            assertTrue(ManifestCheck.check(onApplication, release = release).single().contains("Security B2"))
+            assertTrue(ManifestCheck.check(onService, release = release).single().contains("service x.S"))
+        }
+    }
+
+    @Test
+    fun `hasFragileUserData true is a violation, false is fine`() {
+        val fragile = manifest(applicationAttributes = """android:allowBackup="false" android:hasFragileUserData="true"""")
+        assertTrue(ManifestCheck.check(fragile).single().contains("Security B3"))
+        val notFragile = manifest(applicationAttributes = """android:allowBackup="false" android:hasFragileUserData="false"""")
+        assertEquals(emptyList<String>(), ManifestCheck.check(notFragile))
+    }
+
+    @Test
+    fun `directBootAware true is a violation on application and on a receiver, false is fine`() {
+        val onApplication = manifest(applicationAttributes = """android:allowBackup="false" android:directBootAware="true"""")
+        assertTrue(ManifestCheck.check(onApplication).single().contains("Security D3"))
+        val onReceiver = manifest(
+            components = LAUNCHER + """<receiver android:name="x.R" android:exported="false" android:directBootAware="true"/>""",
+        )
+        assertTrue(ManifestCheck.check(onReceiver, release = true).single().contains("receiver x.R"))
+        // androidx.profileinstaller ships its receiver with directBootAware="false".
+        val libraryFalse = manifest(
+            components = LAUNCHER + """<receiver android:name="x.R" android:exported="false" android:directBootAware="false"/>""",
+        )
+        assertEquals(emptyList<String>(), ManifestCheck.check(libraryFalse, release = true))
+    }
+
+    @Test
+    fun `missing launcher activity is a violation`() {
+        val violations = ManifestCheck.check(
+            manifest(components = LAUNCHER.replace("ui.MainActivity", "ui.RenamedActivity")),
+        )
+        assertTrue(violations.any { it.contains("launcher activity de.uchilab.todo.ui.MainActivity not found") })
+    }
+
+    @Test
+    fun `second intent filter on the launcher activity is a violation`() {
+        val launcher = LAUNCHER.replace(
+            "</activity>",
+            """<intent-filter><action android:name="android.intent.action.VIEW"/></intent-filter></activity>""",
+        )
+        assertTrue(ManifestCheck.check(manifest(components = launcher)).single().contains("Security E2"))
+    }
+
+    @Test
+    fun `SEND action in the launcher intent filter is a violation`() {
+        val launcher = LAUNCHER.replace(
+            "<category",
+            """<action android:name="android.intent.action.SEND"/><category""",
+        )
+        assertTrue(ManifestCheck.check(manifest(components = launcher)).single().contains("Security E2"))
+    }
+
+    @Test
+    fun `data in the launcher intent filter is a violation`() {
+        val launcher = LAUNCHER.replace("</intent-filter>", """<data android:mimeType="text/plain"/></intent-filter>""")
+        assertTrue(ManifestCheck.check(manifest(components = launcher)).single().contains("Security E2"))
+    }
+
+    @Test
     fun `malformed xml is reported instead of crashing`() {
         val violations = ManifestCheck.check("<manifest")
         assertTrue(violations.single().contains("parse"))

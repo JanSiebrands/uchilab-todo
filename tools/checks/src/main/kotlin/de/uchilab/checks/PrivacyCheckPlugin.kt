@@ -5,11 +5,13 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 
@@ -24,18 +26,21 @@ interface PrivacyCheckExtension {
 
 /**
  * Registers `privacyCheck` on an Android application project: merged manifests (debug and release)
- * and all resolved classpaths (runtime and test) must follow the privacy rules of this company.
+ * the app's own sources (without tests) and all resolved classpaths (runtime and test) must follow the
+ * privacy rules of this company.
  */
 class PrivacyCheckPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("privacyCheck", PrivacyCheckExtension::class.java)
         project.tasks.register("privacyCheck", PrivacyCheckTask::class.java) { task ->
             task.group = "verification"
-            task.description = "Checks merged manifests and dependencies against the privacy rules."
+            task.description = "Checks merged manifests, app sources and dependencies against the privacy rules."
             task.allowlist.set(extension.allowlist)
             task.testAllowlist.set(extension.testAllowlist)
             task.denylist.set(extension.denylist)
             task.permissionAllowlist.set(extension.permissionAllowlist)
+            // All source sets; SourceCheck itself drops the test source sets, so that rule has unit tests.
+            task.appSources.from(project.fileTree("src") { it.include("**/*.kt", "**/*.java") })
             task.dependsOn("processDebugMainManifest", "processReleaseMainManifest")
         }
         project.tasks.register("r8Check", R8CheckTask::class.java) { task ->
@@ -84,6 +89,7 @@ abstract class PrivacyCheckTask : DefaultTask() {
     @get:InputFile abstract val testAllowlist: RegularFileProperty
     @get:InputFile abstract val denylist: RegularFileProperty
     @get:InputFile abstract val permissionAllowlist: RegularFileProperty
+    @get:InputFiles abstract val appSources: ConfigurableFileCollection
 
     @TaskAction
     fun run() {
@@ -97,10 +103,13 @@ abstract class PrivacyCheckTask : DefaultTask() {
             } else {
                 val extra = if (variant == "debug") DEBUG_ONLY_EXPORTED else emptySet()
                 val manifest = file.readText()
-                violations += ManifestCheck.check(manifest, extra, allowedPermissions).map { "[$variant manifest] $it" }
+                violations += ManifestCheck.check(manifest, extra, allowedPermissions, release = variant == "release")
+                    .map { "[$variant manifest] $it" }
                 violations += backupViolations(variant, manifest).map { "[$variant backup] $it" }
             }
         }
+        val sources = appSources.files.associate { it.relativeTo(project.rootDir).invariantSeparatorsPath to it.readText() }
+        violations += SourceCheck.check(sources).map { "[source] $it" }
         val classpaths = project.configurations.filter {
             it.isCanBeResolved && CLASSPATH_NAME.matches(it.name)
         }
@@ -119,7 +128,10 @@ abstract class PrivacyCheckTask : DefaultTask() {
             violations += policy.check(coordinates).map { "[dependencies:${configuration.name}] $it" }
         }
         if (violations.isEmpty()) {
-            logger.lifecycle("privacyCheck: OK (${checked.size} dependencies, ${MERGED_MANIFESTS.size} manifests checked)")
+            logger.lifecycle(
+                "privacyCheck: OK (${checked.size} dependencies, ${MERGED_MANIFESTS.size} manifests, " +
+                    "${sources.keys.count(SourceCheck::isShippedSource)} source files checked)",
+            )
         } else {
             violations.forEach { logger.error(it) }
             throw GradleException("privacyCheck failed with ${violations.size} violation(s)")
