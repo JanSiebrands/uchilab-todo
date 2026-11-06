@@ -2,6 +2,7 @@
 # Counterprobe of the counterprobes 10 to 14b (UCH-48/UCH-53): they must fail where the check is missing.
 # Not part of run-all.sh. Usage: verify-stored-data-probes.sh [<commit>]
 #   <commit>: state before the stored data checks, default 2eced09 (main before UCH-53).
+#   Keep this fixed commit after the merge: only there are the checks missing.
 # 1. Every new counterprobe except 12a/12b runs with COUNTERPROBE_SOURCE=<commit> and must fail because the
 #    check stays green there (exit 1 with "check stayed green", not exit 2 = counterprobe broken).
 # 2. 12a/12b hit the exported component rule that already exists in <commit>. They run against a copy of

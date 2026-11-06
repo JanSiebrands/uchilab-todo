@@ -205,6 +205,22 @@ class ManifestCheckTest {
     }
 
     @Test
+    fun `storage attributes are violations on every component type`() {
+        val attributes = listOf(
+            """android:backupAgent="x.A"""" to "Security B2",
+            """android:hasFragileUserData="true"""" to "Security B3",
+            """android:directBootAware="true"""" to "Security D3",
+        )
+        listOf("activity", "activity-alias", "service", "receiver", "provider").forEach { tag ->
+            attributes.forEach { (attribute, reference) ->
+                val xml = manifest(components = LAUNCHER + """<$tag android:name="x.C" android:exported="false" $attribute/>""")
+                val violation = ManifestCheck.check(xml, release = true).single()
+                assertTrue("$tag $attribute -> $violation", violation.contains("$tag x.C") && violation.contains(reference))
+            }
+        }
+    }
+
+    @Test
     fun `missing launcher activity is a violation`() {
         val violations = ManifestCheck.check(
             manifest(components = LAUNCHER.replace("ui.MainActivity", "ui.RenamedActivity")),
@@ -226,6 +242,15 @@ class ManifestCheckTest {
         val launcher = LAUNCHER.replace(
             "<category",
             """<action android:name="android.intent.action.SEND"/><category""",
+        )
+        assertTrue(ManifestCheck.check(manifest(components = launcher)).single().contains("Security E2"))
+    }
+
+    @Test
+    fun `additional category in the launcher intent filter is a violation`() {
+        val launcher = LAUNCHER.replace(
+            "</intent-filter>",
+            """<category android:name="android.intent.category.DEFAULT"/></intent-filter>""",
         )
         assertTrue(ManifestCheck.check(manifest(components = launcher)).single().contains("Security E2"))
     }
