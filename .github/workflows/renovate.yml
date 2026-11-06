@@ -18,7 +18,7 @@ concurrency:
 jobs:
   renovate:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       # Renovate clones the repository itself with RENOVATE_TOKEN. This checkout only provides the wrapper
       # check script and .github/renovate for npm ci, so GITHUB_TOKEN is not written to .git/config.
