@@ -7,10 +7,16 @@ import org.junit.Test
 class BackupRulesCheckTest {
     private val excludes = BackupRulesCheck.DOMAINS.joinToString("\n") { """<exclude domain="$it" />""" }
 
-    private fun extraction(cloud: String? = excludes, transfer: String? = excludes) =
+    private fun extraction(
+        cloud: String? = excludes,
+        transfer: String? = excludes,
+        ios: String? = excludes,
+        iosPlatform: String = "ios",
+    ) =
         "<data-extraction-rules>" +
             (cloud?.let { "<cloud-backup>$it</cloud-backup>" } ?: "") +
             (transfer?.let { "<device-transfer>$it</device-transfer>" } ?: "") +
+            (ios?.let { "<cross-platform-transfer platform=\"$iosPlatform\">$it</cross-platform-transfer>" } ?: "") +
             "</data-extraction-rules>"
 
     @Test
@@ -27,6 +33,24 @@ class BackupRulesCheckTest {
     @Test
     fun `missing device-transfer section is a violation`() {
         assertTrue(BackupRulesCheck.checkDataExtractionRules(extraction(transfer = null)).single().contains("device-transfer"))
+    }
+
+    @Test
+    fun `missing ios cross-platform-transfer section is a violation`() {
+        assertTrue(BackupRulesCheck.checkDataExtractionRules(extraction(ios = null)).single().contains("platform=\"ios\""))
+    }
+
+    @Test
+    fun `cross-platform-transfer for another platform does not cover ios`() {
+        assertTrue(BackupRulesCheck.checkDataExtractionRules(extraction(iosPlatform = "other")).single().contains("platform=\"ios\""))
+    }
+
+    @Test
+    fun `ios section with include or missing exclude is a violation`() {
+        val withInclude = "$excludes<include domain=\"file\" path=\".\" />"
+        assertTrue(BackupRulesCheck.checkDataExtractionRules(extraction(ios = withInclude)).single().contains("include"))
+        val missingOne = excludes.replace("""<exclude domain="database" />""", "")
+        assertTrue(BackupRulesCheck.checkDataExtractionRules(extraction(ios = missingOne)).single().contains("database"))
     }
 
     @Test

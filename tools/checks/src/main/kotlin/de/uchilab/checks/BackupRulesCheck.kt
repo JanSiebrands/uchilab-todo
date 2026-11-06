@@ -8,7 +8,7 @@ import java.io.StringReader
 
 /**
  * "Local only" also covers Android Auto Backup: nothing may be backed up to the cloud or transferred
- * to a new device. Checks the contents of the XML files referenced by
+ * to a new device or to iOS. Checks the contents of the XML files referenced by
  * `android:dataExtractionRules` (Android 12+) and `android:fullBackupContent` (Android 11 and older).
  */
 object BackupRulesCheck {
@@ -24,7 +24,7 @@ object BackupRulesCheck {
         if (root.tagName != "data-extraction-rules") {
             return listOf("data extraction rules: root element must be <data-extraction-rules>, found <${root.tagName}>")
         }
-        return listOf("cloud-backup", "device-transfer").flatMap { section ->
+        val androidSections = listOf("cloud-backup", "device-transfer").flatMap { section ->
             val element = root.childElements().singleOrNull { it.tagName == section }
             if (element == null) {
                 listOf("data extraction rules: <$section> is missing or duplicated, so $section is on by default")
@@ -32,6 +32,18 @@ object BackupRulesCheck {
                 sectionViolations(element, "data extraction rules <$section>")
             }
         }
+        // Transfer to iOS: the section must exist for platform "ios" (missing section = default = transfer).
+        val ios = root.childElements()
+            .singleOrNull { it.tagName == "cross-platform-transfer" && it.getAttribute("platform") == "ios" }
+        val iosSection = if (ios == null) {
+            listOf(
+                "data extraction rules: <cross-platform-transfer platform=\"ios\"> is missing or duplicated, " +
+                    "so transfer to iOS is on by default",
+            )
+        } else {
+            sectionViolations(ios, "data extraction rules <cross-platform-transfer platform=\"ios\">")
+        }
+        return androidSections + iosSection
     }
 
     /** Rules for `<full-backup-content>`. */

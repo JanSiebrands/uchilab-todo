@@ -37,8 +37,20 @@ class R8CheckTest {
     }
 
     @Test
+    fun `renamed synthetic classes only (keep-all rule) is a violation`() {
+        val keepAll = "a.B -> a.B:\na.B\$\$ExternalSyntheticLambda0 -> c:\nx.Y -> R8\$\$REMOVED\$\$CLASS\$\$0:\n"
+        assertTrue(R8Check.check(true, config, keepAll, usage).single().contains("rename"))
+    }
+
+    @Test
     fun `empty usage is a violation`() {
         assertTrue(R8Check.check(true, config, mapping, "\n").single().contains("remove"))
+    }
+
+    @Test
+    fun `usage with removed members or synthetic classes only (keep-all rule) is a violation`() {
+        val keepAll = "a.B:\n    void unused()\na.B\$\$ExternalSyntheticLambda0\n"
+        assertTrue(R8Check.check(true, config, mapping, keepAll).single().contains("remove"))
     }
 
     @Test
