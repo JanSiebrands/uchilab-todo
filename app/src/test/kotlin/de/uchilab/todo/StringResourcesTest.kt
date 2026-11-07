@@ -35,7 +35,12 @@ class StringResourcesTest {
 
     private val requiredKeys = listOf(
         "task_list_empty_title", "task_list_empty_body", "task_list_error_title", "task_list_error_body",
-        "task_item_description",
+        "task_item_description", "task_list_empty_hint",
+        "new_task_action", "new_task_heading", "new_task_close", "new_task_save", "new_task_title_label",
+        "new_task_title_required", "new_task_note_label", "new_task_title_missing", "new_task_title_too_long",
+        "new_task_note_too_long", "new_task_counter", "new_task_counter_description", "new_task_save_failed_title",
+        "new_task_save_failed_body", "new_task_discard_title", "new_task_discard_body", "new_task_discard_keep",
+        "new_task_discard_confirm", "new_task_created",
     )
 
     @Test
@@ -44,6 +49,18 @@ class StringResourcesTest {
             val texts = strings(dir)
             for (key in requiredKeys) {
                 assertTrue("$key missing or blank in $dir", !texts[key].isNullOrBlank())
+            }
+        }
+    }
+
+    @Test
+    fun `limit and counter texts take their numbers by placeholder`() {
+        for (dir in listOf("values", "values-de")) {
+            val texts = strings(dir)
+            assertTrue(texts.getValue("new_task_title_too_long").contains("%1\$s"))
+            assertTrue(texts.getValue("new_task_note_too_long").contains("%1\$s"))
+            for (key in listOf("new_task_counter", "new_task_counter_description")) {
+                assertTrue("$dir $key", texts.getValue(key).contains("%1\$s") && texts.getValue(key).contains("%2\$s"))
             }
         }
     }

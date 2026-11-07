@@ -136,3 +136,56 @@ class TaskContentTest {
         assertEquals("a\r\nb\u2028c", valid("t", "a\r\nb\u2028c").note)
     }
 }
+
+/** Public counting and single-line functions the new-task screen uses instead of its own rules (S4). */
+class TaskContentCountingTest {
+
+    private val family = "👨‍👩‍👧‍👦"
+
+    @Test
+    fun `single line turns every kind of line break into one space`() {
+        assertEquals("A B C D E F G", TaskContent.singleLine("A\nB\r\nC\rD\u0085E F G"))
+    }
+
+    @Test
+    fun `single line neither trims nor shortens`() {
+        val long = "a".repeat(250)
+        assertEquals(" $long ", TaskContent.singleLine(" $long "))
+    }
+
+    @Test
+    fun `title length counts graphemes of the trimmed single line`() {
+        assertEquals(1, TaskContent.titleLength(family))
+        assertEquals(200, TaskContent.titleLength("  " + family.repeat(200) + " \n "))
+        assertEquals(3, TaskContent.titleLength("a\nb"))
+        assertEquals(0, TaskContent.titleLength("   "))
+    }
+
+    @Test
+    fun `note length counts graphemes of the trimmed note and keeps inner breaks`() {
+        assertEquals(3, TaskContent.noteLength(" a\nb "))
+        assertEquals(2000, TaskContent.noteLength(" " + family.repeat(2000) + "\n"))
+        assertEquals(0, TaskContent.noteLength("  \n "))
+    }
+
+    @Test
+    fun `the lengths agree with the limits of of`() {
+        for (n in listOf(199, 200, 201)) {
+            val title = family.repeat(n)
+            assertEquals(n, TaskContent.titleLength(title))
+            assertEquals(n <= TaskContent.MAX_TITLE_LENGTH, TaskContent.of(title, null) is Validated.Valid)
+        }
+        for (n in listOf(1999, 2000, 2001)) {
+            val note = family.repeat(n)
+            assertEquals(n, TaskContent.noteLength(note))
+            assertEquals(n <= TaskContent.MAX_NOTE_LENGTH, TaskContent.of("t", note) is Validated.Valid)
+        }
+    }
+
+    @Test
+    fun `of stores the single line trimmed title and no note for blank notes`() {
+        val content = (TaskContent.of(" A\nB ", "  \n ") as Validated.Valid).content
+        assertEquals("A B", content.title)
+        assertEquals(null, content.note)
+    }
+}

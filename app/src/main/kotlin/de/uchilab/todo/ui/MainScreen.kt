@@ -14,13 +14,26 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import de.uchilab.todo.R
+import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.ui.newtask.NewTaskActions
+import de.uchilab.todo.ui.newtask.NewTaskField
+import de.uchilab.todo.ui.newtask.NewTaskUiState
 import de.uchilab.todo.ui.tasklist.TaskListScreen
 import de.uchilab.todo.ui.tasklist.TaskListUiState
 
 /** Top bar with the working title and the task list below. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(state: TaskListUiState, modifier: Modifier = Modifier) {
+fun MainScreen(
+    state: TaskListUiState,
+    newTask: NewTaskUiState = NewTaskUiState(),
+    actions: NewTaskActions = NoNewTaskActions,
+    onNewTask: () -> Unit = {},
+    createdTaskId: TaskId? = null,
+    createdAnnouncement: Boolean = false,
+    onCreatedHandled: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     // Outside the branch on the state, so a position restored after a process restart is applied
     // as soon as the list appears. Only index and offset are saved, never titles or notes.
     val listState = rememberLazyListState()
@@ -41,4 +54,14 @@ fun MainScreen(state: TaskListUiState, modifier: Modifier = Modifier) {
     ) { padding ->
         TaskListScreen(state, listState, Modifier.padding(padding))
     }
+}
+
+object NoNewTaskActions : NewTaskActions {
+    override fun onTitleChange(raw: String) = Unit
+    override fun onNoteChange(raw: String) = Unit
+    override fun onFocusChange(field: NewTaskField) = Unit
+    override fun onSave() = Unit
+    override fun onCloseRequest() = Unit
+    override fun onDiscardDismiss() = Unit
+    override fun onDiscardConfirm() = Unit
 }

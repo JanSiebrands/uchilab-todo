@@ -38,6 +38,15 @@ class TaskContent private constructor(val title: String, val note: String?) {
          * Note: trimmed, keeps its line breaks, empty after trimming means no note.
          * The trimmed values are what gets stored.
          */
+        /** Each line break becomes one space; does not trim and does not shorten. */
+        fun singleLine(raw: String): String = raw
+
+        /** Length of a title as [of] counts it (graphemes of the single-line, trimmed title). */
+        fun titleLength(raw: String): Int = 0
+
+        /** Length of a note as [of] counts it (graphemes of the trimmed note). */
+        fun noteLength(raw: String): Int = 0
+
         fun of(title: String, note: String?): Validated {
             val cleanTitle = title.replace(LINE_BREAK, " ").trim()
             val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }

@@ -7,4 +7,26 @@
     <string name="task_list_error_title">Aufgaben lassen sich gerade nicht laden</string>
     <string name="task_list_error_body">Die App hat nichts gelöscht. Schließe sie und öffne sie erneut. Hilft das nicht, starte das Gerät neu.</string>
     <string name="task_item_description">%1$s. Notiz: %2$s</string>
+
+    <string name="task_list_empty_hint">Mit „Neue Aufgabe“ legst du die erste an.</string>
+
+    <string name="new_task_action">Neue Aufgabe</string>
+    <string name="new_task_heading">Neue Aufgabe</string>
+    <string name="new_task_close">Schließen</string>
+    <string name="new_task_save">Speichern</string>
+    <string name="new_task_title_label">Titel</string>
+    <string name="new_task_title_required">Pflichtfeld</string>
+    <string name="new_task_note_label">Notiz (optional)</string>
+    <string name="new_task_title_missing">Gib einen Titel ein.</string>
+    <string name="new_task_title_too_long">Der Titel ist zu lang, höchstens %1$s Zeichen.</string>
+    <string name="new_task_note_too_long">Die Notiz ist zu lang, höchstens %1$s Zeichen.</string>
+    <string name="new_task_counter">%1$s / %2$s</string>
+    <string name="new_task_counter_description">%1$s von %2$s Zeichen</string>
+    <string name="new_task_save_failed_title">Nicht gespeichert</string>
+    <string name="new_task_save_failed_body">Dein Text ist noch da. Prüfe, ob auf dem Gerät Speicher frei ist, und tippe noch einmal auf Speichern.</string>
+    <string name="new_task_discard_title">Eingabe verwerfen?</string>
+    <string name="new_task_discard_body">Titel und Notiz werden nicht gespeichert.</string>
+    <string name="new_task_discard_keep">Weiter bearbeiten</string>
+    <string name="new_task_discard_confirm">Verwerfen</string>
+    <string name="new_task_created">Aufgabe angelegt</string>
 </resources>
