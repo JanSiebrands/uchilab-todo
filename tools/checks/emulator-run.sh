@@ -5,6 +5,11 @@
 # Expects the seed in app/build/emulator-seed (EmulatorSeedTest, see ci.yml).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+# Full logcat for the reviewers, also after a red run; uploaded by the emulator job (UCH-69). The emulator is
+# fresh and holds no personal data. timeout: a hanging adb must not hold the job (UCH-62).
+logs="$here/../../app/build/emulator-artifacts"
+save_logcat() { mkdir -p "$logs"; timeout 60 adb logcat -d -b all >"$logs/logcat.txt" 2>&1 || true; }
+trap save_logcat EXIT
 apks="$here/../../app/build/outputs/apk"
 seed="$here/../../app/build/emulator-seed"
 step() { echo "::group::$*"; timeout 600 "$@"; echo "::endgroup::"; }

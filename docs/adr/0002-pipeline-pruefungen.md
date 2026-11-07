@@ -33,3 +33,6 @@ Feldliste (Entscheidung 10): 15a (neue Spalte in `TaskEntity`, Schema und Liste 
 - Ob die Wartezeit im echten Lauf wirkt, zeigt erst der erste Renovate-Lauf nach dem Merge.
 - Ob `ANDROID_HOME` im echten Renovate-Lauf ankommt, zeigt erst der nächste Lauf mit Gradle-Update: im Log kein „SDK location not found“, Artefakte aktualisiert.
 - Die Gegenproben 04a/04b prüfen Locking und Verifikation mit der Test-Bibliothek `de.uchilab.probe:probe-lib` aus einem lokalen Maven-Repo der Wegwerf-Kopie, nicht mit einer echten Bibliothek. 03a liest die aktuelle Version von `activity-compose` aus dem Katalog. So machen Updates echter Bibliotheken die Gegenproben nicht rot (UCH-28). Nachweis mit `tools/checks/counterprobes/verify-version-independence.sh`.
+
+## Ergänzung S2a (UCH-54): APK zum Ausprobieren
+Neuer Job `tryout-apk`, nur bei Pull Requests, Entscheidungen in ADR 0004. Neue Prüfungen mit Gegenproben: `tools/ci/tryout-apk-check.sh` (15e, Fingerabdruck-Vergleich 15f), `tools/ci/tryout-install-test.sh` (15a bis 15d, im Job `tryout-apk` auf dem Emulator API = `minSdk`) und `tools/ci/tryout-workflow-check.sh` im Job `build` (16). Die Start-Prüfung von `app-start.sh` liegt jetzt in `tools/checks/app-start-lib.sh` und wird von beiden Skripten genutzt; `app-start.sh` verhält sich unverändert.
