@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskContent
 import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.domain.TaskReadException
 import de.uchilab.todo.domain.TaskStatus
 import de.uchilab.todo.domain.Validated
 import de.uchilab.todo.domain.WriteError
@@ -25,6 +26,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -357,8 +359,36 @@ class TaskRepositoryTest {
             }
         }
         val error = runCatching { load() }.exceptionOrNull()
-        assertTrue(error is IllegalStateException)
-        assertFalse(error?.message.orEmpty().contains("MARKER"))
+        assertTrue(error is TaskReadException)
+        assertNull(error?.message)
+        assertNull(error?.cause)
+    }
+
+    @Test
+    fun `a stored row outside the limits fails loading as a read failure without revealing any value`() {
+        runBlocking {
+            db.useWriterConnection { connection ->
+                connection.usePrepared(
+                    "INSERT INTO task (title, note, created_at, status) VALUES ('', 'MARKER-n', 0, 'open')",
+                ) { it.step() }
+            }
+        }
+        val error = runCatching { load() }.exceptionOrNull()
+        assertTrue(error is TaskReadException)
+        assertNull(error?.message)
+        assertNull(error?.cause)
+    }
+
+    @Test
+    fun `a missing table ends the stream with a read failure that carries no message and no cause`() {
+        add("MARKER-t", "MARKER-n")
+        runBlocking {
+            db.useWriterConnection { connection -> connection.usePrepared("DROP TABLE task") { it.step() } }
+        }
+        val error = runCatching { load() }.exceptionOrNull()
+        assertTrue("was $error", error is TaskReadException)
+        assertNull(error?.message)
+        assertNull(error?.cause)
     }
 
     @Test

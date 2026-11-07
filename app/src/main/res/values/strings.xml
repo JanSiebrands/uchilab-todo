@@ -2,4 +2,11 @@
 <resources>
     <!-- Working title; the final name (Kerbholz) follows in story S12. Same text in both languages. -->
     <string name="app_name">uchilab-todo</string>
+
+    <string name="task_list_empty_title">No tasks yet</string>
+    <string name="task_list_empty_body">Your tasks will show up here, newest at the top.</string>
+    <string name="task_list_error_title">Your tasks can’t be loaded right now</string>
+    <string name="task_list_error_body">The app hasn’t deleted anything. Close it and open it again. If that doesn’t help, restart your device.</string>
+    <!-- Spoken by TalkBack for one entry: title and the whole note. -->
+    <string name="task_item_description">%1$s. Note: %2$s</string>
 </resources>

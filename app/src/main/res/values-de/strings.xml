@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">uchilab-todo</string>
+
+    <string name="task_list_empty_title">Noch keine Aufgaben</string>
+    <string name="task_list_empty_body">Hier stehen deine Aufgaben, die neueste immer oben.</string>
+    <string name="task_list_error_title">Aufgaben lassen sich gerade nicht laden</string>
+    <string name="task_list_error_body">Die App hat nichts gelöscht. Schließe sie und öffne sie erneut. Hilft das nicht, starte das Gerät neu.</string>
+    <string name="task_item_description">%1$s. Notiz: %2$s</string>
 </resources>

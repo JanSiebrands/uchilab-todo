@@ -12,7 +12,7 @@ import de.uchilab.todo.R
 
 /** Empty screen with the working title; the app has no function yet. */
 @androidx.compose.runtime.Composable
-fun MainScreen() {
+fun MainScreen(@Suppress("UNUSED_PARAMETER") state: de.uchilab.todo.ui.tasklist.TaskListUiState = de.uchilab.todo.ui.tasklist.TaskListUiState.Loading) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(contentAlignment = Alignment.Center) {
             Text(text = stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)

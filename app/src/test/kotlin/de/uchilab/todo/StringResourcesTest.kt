@@ -32,4 +32,48 @@ class StringResourcesTest {
         assertTrue("app_name missing or blank in values", !english.isNullOrBlank())
         assertTrue("app_name missing or blank in values-de", !german.isNullOrBlank())
     }
+
+    private val requiredKeys = listOf(
+        "task_list_empty_title", "task_list_empty_body", "task_list_error_title", "task_list_error_body",
+        "task_item_description",
+    )
+
+    @Test
+    fun `all list texts exist and are not blank in both languages`() {
+        for (dir in listOf("values", "values-de")) {
+            val texts = strings(dir)
+            for (key in requiredKeys) {
+                assertTrue("$key missing or blank in $dir", !texts[key].isNullOrBlank())
+            }
+        }
+    }
+
+    @Test
+    fun `no string is blank`() {
+        for (dir in listOf("values", "values-de")) {
+            val blank = strings(dir).filterValues { it.isBlank() }.keys
+            assertTrue("blank strings in $dir: $blank", blank.isEmpty())
+        }
+    }
+
+    @Test
+    fun `german and english use the same placeholders`() {
+        val placeholder = Regex("""%(\d+\$)?[sd]""")
+        val english = strings("values")
+        val german = strings("values-de")
+        for (key in english.keys) {
+            val expected = placeholder.findAll(english.getValue(key)).map { it.value }.toList()
+            val actual = placeholder.findAll(german.getValue(key)).map { it.value }.toList()
+            assertEquals("placeholders of $key", expected, actual)
+        }
+    }
+
+    @Test
+    fun `the entry text has a placeholder for title and for the note`() {
+        for (dir in listOf("values", "values-de")) {
+            val text = strings(dir).getValue("task_item_description")
+            assertTrue("$dir: title placeholder", text.contains("%1\$s"))
+            assertTrue("$dir: note placeholder", text.contains("%2\$s"))
+        }
+    }
 }
