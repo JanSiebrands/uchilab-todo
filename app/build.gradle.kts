@@ -95,6 +95,8 @@ privacyCheck {
     testAllowlist.set(rootProject.file("tools/checks/allowlist-test.txt"))
     denylist.set(rootProject.file("tools/checks/denylist.txt"))
     permissionAllowlist.set(rootProject.file("tools/checks/permissions-allowlist.txt"))
+    storedFields.set(rootProject.file("tools/checks/stored-fields.txt"))
+    schemaDirectory.set(layout.projectDirectory.dir("schemas"))
 }
 
 // The checks are only trustworthy if their own tests (incl. negative tests) pass first.

@@ -22,6 +22,10 @@ interface PrivacyCheckExtension {
     val denylist: RegularFileProperty
     /** Permissions allowed in the merged manifests, one per line; may be empty. */
     val permissionAllowlist: RegularFileProperty
+    /** Fields stored on the device, one `table.column` per line (DSGVO P4). */
+    val storedFields: RegularFileProperty
+    /** Room schema export directory (`room3 { schemaDirectory(...) }`), one subdirectory per database. */
+    val schemaDirectory: DirectoryProperty
 }
 
 /**
@@ -39,9 +43,18 @@ class PrivacyCheckPlugin : Plugin<Project> {
             task.testAllowlist.set(extension.testAllowlist)
             task.denylist.set(extension.denylist)
             task.permissionAllowlist.set(extension.permissionAllowlist)
+            task.storedFields.set(extension.storedFields)
+            task.schemaDirectory.set(extension.schemaDirectory)
             // All source sets; SourceCheck itself drops the test source sets, so that rule has unit tests.
             task.appSources.from(project.fileTree("src") { it.include("**/*.kt", "**/*.java") })
+            // KSP generates the Room schema from the current code; only if it differs from the checked-in one,
+            // Room writes it and the finalizer copyRoomSchemas copies it into schemaDirectory (otherwise
+            // NO-SOURCE). Alone copyRoomSchemas has no input, so privacyCheck depends on the KSP tasks of both
+            // variants as well. The field list is thus checked
+            // against the code, not against a stale file; CI then checks that this left the checked-in schema
+            // unchanged (tools/checks/schema-check.sh).
             task.dependsOn("processDebugMainManifest", "processReleaseMainManifest")
+            task.dependsOn(KSP_TASKS + ROOM_SCHEMA_TASK)
         }
         project.tasks.register("r8Check", R8CheckTask::class.java) { task ->
             task.group = "verification"
@@ -57,6 +70,8 @@ class PrivacyCheckPlugin : Plugin<Project> {
 
     companion object {
         const val R8_TASK = "minifyReleaseWithR8"
+        const val ROOM_SCHEMA_TASK = "copyRoomSchemas"
+        val KSP_TASKS = listOf("kspDebugKotlin", "kspReleaseKotlin")
     }
 }
 
@@ -90,6 +105,9 @@ abstract class PrivacyCheckTask : DefaultTask() {
     @get:InputFile abstract val denylist: RegularFileProperty
     @get:InputFile abstract val permissionAllowlist: RegularFileProperty
     @get:InputFiles abstract val appSources: ConfigurableFileCollection
+    @get:InputFile abstract val storedFields: RegularFileProperty
+    /** Internal: a missing directory must be a violation of the check, not a task validation error. */
+    @get:Internal abstract val schemaDirectory: DirectoryProperty
 
     @TaskAction
     fun run() {
@@ -110,6 +128,11 @@ abstract class PrivacyCheckTask : DefaultTask() {
         }
         val sources = appSources.files.associate { it.relativeTo(project.rootDir).invariantSeparatorsPath to it.readText() }
         violations += SourceCheck.check(sources).map { "[source] $it" }
+        val databases = schemaDirectory.get().asFile.listFiles { f -> f.isDirectory }.orEmpty().associate { dir ->
+            dir.name to dir.listFiles { f -> f.isFile }.orEmpty().associate { it.name to it.readText() }
+        }
+        violations += StoredFieldsCheck.check(databases, storedFields.get().asFile.readText())
+            .map { "[stored fields] $it" }
         val classpaths = project.configurations.filter {
             it.isCanBeResolved && CLASSPATH_NAME.matches(it.name)
         }
@@ -130,7 +153,8 @@ abstract class PrivacyCheckTask : DefaultTask() {
         if (violations.isEmpty()) {
             logger.lifecycle(
                 "privacyCheck: OK (${checked.size} dependencies, ${MERGED_MANIFESTS.size} manifests, " +
-                    "${sources.keys.count(SourceCheck::isShippedSource)} source files checked)",
+                    "${sources.keys.count(SourceCheck::isShippedSource)} source files, " +
+                    "${databases.size} database schema(s) checked)",
             )
         } else {
             violations.forEach { logger.error(it) }

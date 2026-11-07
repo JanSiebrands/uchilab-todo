@@ -73,6 +73,7 @@ Die Domain kennt weder Android noch Compose; `domain` und `data` entstehen ab S2
 - kein externer, geteilter, Cache- oder Direct-Boot-Speicher im Quelltext der App (z. B. `getExternalFilesDir`, `MediaStore`, Storage Access Framework, `cacheDir`, `createTempFile`, `createDeviceProtectedStorageContext`) (Security P6, DSGVO P3). Geprüft werden alle `.kt`/`.java` unter `app/src/`, außer `test*`, `androidTest*` und `testFixtures*`. Treffer in Kommentaren zählen, Ausnahmen gibt es nicht; die Regeln stehen in `tools/checks/src/main/kotlin/de/uchilab/checks/SourceCheck.kt` und werden nur nach Rückfrage bei Security und DSGVO geändert,
 - jede Berechtigung muss in `tools/checks/permissions-allowlist.txt` stehen (auch über Abhängigkeiten eingeschleppte); `INTERNET` und `ACCESS_NETWORK_STATE` bleiben auch dann verboten,
 - Backup und Transfer aus: das Manifest verweist auf `dataExtractionRules` und `fullBackupContent`, beide Dateien existieren, `<cloud-backup>`, `<device-transfer>` und `<cross-platform-transfer platform="ios">` sind vorhanden, alle neun Bereiche sind ausgeschlossen, kein `<include>`,
+- gespeicherte Felder (DSGVO P4): Die Spalten aller Tabellen im Room-Schema unter `app/schemas/` (je Datenbank die höchste Version) müssen genau den Einträgen `tabelle.spalte` in `tools/checks/stored-fields.txt` entsprechen. Rot bei einem Feld, das nicht in der Liste steht, bei einem Listeneintrag ohne Spalte und wenn kein Schema gefunden wird. `privacyCheck` erzeugt das Schema vorher aus dem aktuellen Code (`kspDebugKotlin`, `kspReleaseKotlin`, `copyRoomSchemas`). Danach prüft `tools/checks/schema-check.sh` in der CI, dass `app/schemas` dem Commit entspricht. Ein neues Feld braucht also ein eingechecktes, neu erzeugtes Schema und einen Listeneintrag. Die Liste wird nur nach Rückfrage bei DSGVO geändert (V7),
 - jede Abhängigkeit muss auf der Allowlist stehen (`tools/checks/allowlist.txt` für die App, `tools/checks/allowlist-test.txt` zusätzlich für Tests). Bekannte Tracker stehen in `denylist.txt` und führen zu einer klaren Fehlermeldung.
 
 **Neue Abhängigkeit aufnehmen:** Gruppe (oder `gruppe:artefakt`) bewusst in die passende Allowlist eintragen. Die Änderung wird im Pull Request geprüft. Danach `./gradlew :app:dependencies --write-locks` und `./gradlew --write-verification-metadata sha256 assembleDebug assembleRelease testDebugUnitTest lint` ausführen und die geänderten Dateien einchecken.
@@ -81,7 +82,7 @@ Die Checks sind selbst getestet, inklusive Negativtests (`tools/checks/src/test`
 
 ## 7. Pipeline
 Bei jedem Pull Request, Push auf `main` und täglich auf `main` läuft GitHub Actions (`.github/workflows/ci.yml`), ohne Secrets:
-1. Wrapper-Prüfung, dann Build (Debug), Release-Build mit R8, Unit- und UI-Tests, Lint, `r8Check`, `privacyCheck`
+1. Wrapper-Prüfung, dann Build (Debug), Release-Build mit R8, Unit- und UI-Tests, Lint, `r8Check`, `privacyCheck`, danach `schema-check.sh` (eingechecktes Room-Schema passt zum Code)
 2. Gegenproben (`tools/checks/counterprobes/run-all.sh`)
 3. App-Start auf dem Emulator als Debug und als Release mit R8, mit Gegenprobe ohne Launcher-Eintrag
 4. Secret-Scan (Arbeitsbaum und Git-Historie)

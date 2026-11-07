@@ -31,6 +31,9 @@ jobs:
       # Debug build, unit and UI tests, lint, release build with R8 (unsigned), R8 result check,
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
       - run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+      # privacyCheck regenerated app/schemas from the code (KSP + copyRoomSchemas). Red if that changed the
+      # checked-in schema, i.e. the field list was checked against a stale schema (DSGVO P4, counterprobe 15c).
+      - run: tools/checks/schema-check.sh
 
   counterprobes:
     name: Counterprobes (each check turns red on a built-in defect)
