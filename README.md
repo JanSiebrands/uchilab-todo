@@ -48,6 +48,8 @@ Dass 03a, 04a und 04b nach einem Update von `activity-compose` gültig bleiben, 
 
 **App-Start auf dem Emulator:** bei laufendem Emulator `tools/checks/emulator-run.sh` (Debug, Release mit R8, Gegenprobe ohne Launcher-Eintrag). Die unsignierte Release-APK wird dabei mit einem frisch erzeugten Wegwerf-Schlüssel signiert. Den Emulator danach beenden.
 
+**APK zum Ausprobieren auf dem Emulator:** `tools/ci/tryout-install-test.sh <apk> <minSdk>` prüft auf einem laufenden Emulator mit Android-API = `minSdk` (Wert aus `tools/ci/tryout-min-sdk.sh`): Installation, Update mit `adb install -r` und Start (gemeinsame Start-Prüfung `tools/checks/app-start-lib.sh`). Anders als `app-start.sh` signiert es nicht selbst, eine unsignierte APK wird rot. Gegenproben 15a bis 15f laufen mit `tools/ci/tryout-emulator-run.sh` im Job `tryout-apk` (siehe 7).
+
 ## 5. Projektstruktur
 ```mermaid
 graph TD
@@ -90,6 +92,7 @@ Bei jedem Pull Request, Push auf `main` und täglich auf `main` läuft GitHub Ac
 3. App-Start auf dem Emulator als Debug und als Release mit R8, mit Gegenprobe ohne Launcher-Eintrag
 4. Secret-Scan (Arbeitsbaum und Git-Historie)
 5. Schwachstellenprüfung der Abhängigkeiten
+6. Nur bei Pull Requests, wenn alle anderen Jobs grün sind: APK zum Ausprobieren bauen, signieren, prüfen, auf dem Emulator mit API = `minSdk` installieren und starten, dann hochladen (siehe 8). Die Regeln dieses Jobs prüft `tools/ci/tryout-workflow-check.sh` im Job `build`.
 
 Lint meldet keine neueren Versionen (die Pipeline wird ohne Codeänderung nicht rot). Neue Versionen kommen als Pull Request von Renovate (`.github/workflows/renovate.yml`, wöchentlich, nur auf `main`, Lockfile und `verification-metadata.xml` im selben PR). Update-PRs werden nie automatisch gemergt. Renovate nutzt das Token des Bot-Kontos `uchilabbot` aus dem Repo-Secret `RENOVATE_TOKEN` (Entscheidung von Jan: keine GitHub App, damit keine zweite Identität Pull Requests freigeben kann). Einen Lauf von Hand startest du mit `gh workflow run renovate.yml --ref main`.
 
@@ -99,7 +102,21 @@ Renovate gibt `./gradlew` nur ausgewählte Umgebungsvariablen weiter. `ANDROID_H
 
 Schlägt ein Schritt fehl, ist der Check rot. Alle Werkzeuge laufen im Runner, es werden keine Projektdaten an Dritte gesendet. Mehr dazu in `docs/adr/0001-technologie.md` und `docs/adr/0002-pipeline-pruefungen.md`.
 
-## 8. Beitragen
+## 8. APK zum Ausprobieren
+
+Zu jedem Pull Request mit grüner Pipeline gibt es eine fertige APK zum Ausprobieren (ADR 0004).
+
+**Wo:** im Pull Request unter „Checks“ → Lauf „CI“ → Job „APK to try out“ → Zusammenfassung des Laufs. Dort stehen der Download-Link, der Dateiname `uchilab-todo-pr<Nummer>-<Commit>.apk` (Commit: die ersten 7 Zeichen des letzten Commits im Pull Request), die SHA-256-Prüfsumme der APK und der Fingerabdruck des Zertifikats. Die Datei ist auch unter „Artifacts“ des Laufs zu finden und bleibt 30 Tage verfügbar. Der Download ist direkt die APK, kein ZIP. Ist ein Check rot, gibt es keine APK.
+
+**Installieren:** die Datei auf das Gerät laden und öffnen. Android fragt beim ersten Mal, ob der Browser oder Dateimanager Apps installieren darf („Installation aus unbekannten Quellen“), das einmal erlauben. Alternativ am Rechner: `adb install -r <datei>`.
+
+**Update:** Eine neuere APK aus demselben Pull Request lässt sich über die installierte installieren, die Daten bleiben erhalten. Die Zusammenfassung zeigt dann „Schlüssel wiederverwendet“ und denselben Fingerabdruck.
+
+**Wann vorher deinstallieren:** Steht in der Zusammenfassung **„Neuer Schlüssel: alte Version vorher deinstallieren“**, hat die APK eine andere Signatur als die installierte. Das passiert beim ersten Lauf eines Pull Requests, wenn ein Pull Request 7 Tage lang keinen Lauf hatte (GitHub löscht dann den Schlüssel aus dem Cache), und beim Wechsel zu einer APK aus einem anderen Pull Request (jeder Pull Request hat einen eigenen Schlüssel). Dann die App deinstallieren und neu installieren; die Testdaten gehen dabei verloren.
+
+**Was die APK ist:** der Release-Build mit R8, nicht debuggable, signiert mit einem Wegwerf-Schlüssel des Pull Requests (kein Secret, nichts im Repo). Vor dem Hochladen wurde genau diese Datei auf einem Emulator mit der niedrigsten unterstützten Android-Version installiert, aktualisiert und gestartet. Nur zum Ausprobieren mit erfundenen Testaufgaben, kein Store-Build.
+
+## 9. Beitragen
 - Code, Commits und Bezeichner auf Englisch, Doku und README auf Deutsch.
 - Testgetrieben: erst Tests, dann Umsetzung.
 - Lizenz: siehe `LICENSE`.
