@@ -36,6 +36,10 @@ tools/checks/vuln-scan.sh     # Schwachstellenprüfung der Abhängigkeiten (osv-
 ```
 Alles zusammen, wie in der Pipeline: `./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck`
 
+Gradle kompiliert Kotlin im eigenen Prozess (kein Kotlin-Daemon), ein unbenutzter Gradle-Daemon beendet sich nach 10 Minuten (`gradle.properties`, `tools/checks/gradle.properties`). Nach dem Arbeiten trotzdem `./gradlew --stop`.
+
+**CI-Lauf für Prüfer:** Jeder Lauf lädt hoch, auch wenn er rot ist (14 Tage, Name endet auf den Commit-SHA, bei Pull Requests den Head-Commit): `reports-<sha>` (Testberichte der App und von `tools/checks` als JUnit-XML und HTML, Lint als HTML, XML und SARIF), `debug-apk-<sha>`, `r8-mapping-<sha>` (`mapping.txt` des Release-Builds) und `emulator-logs-<sha>` (Logcat). Liste: `gh api repos/JanSiebrands/uchilab-todo/actions/runs/<run-id>/artifacts --jq '.artifacts[].name'`. `tools/ci/review-artifacts-check.sh` prüft die Upload-Schritte im Workflow, `tools/ci/review-artifacts.sh` sammelt die Dateien und wird rot, wenn nach grünem Build eine fehlt.
+
 **Gegenproben:** `tools/checks/counterprobes/run-all.sh` baut je Prüfung einen Fehler in eine Wegwerf-Kopie des Projekts ein und zeigt am Exit-Code, dass die Prüfung rot wird (bei Lint mit älterer Version: grün bleibt). Der eingecheckte Stand wird nicht verändert. Gegen einen anderen Stand: `COUNTERPROBE_SOURCE=<verzeichnis> tools/checks/counterprobes/run-all.sh`.
 
 Dass die Gegenproben 10 bis 14b ohne ihre Prüfung fehlschlagen, zeigt `tools/checks/counterprobes/verify-stored-data-probes.sh [<commit>]` (nicht in `run-all.sh`): Es lässt sie gegen den Stand vor den Prüfungen (`2eced09`) laufen, 12a/12b zusätzlich gegen eine Kopie mit abgeschalteter Regel für exportierte Komponenten.
