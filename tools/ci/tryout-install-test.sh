@@ -6,7 +6,7 @@
 # 3. Update with `adb install -r <apk>` must succeed (same signature, data stays).
 # 4. Start check shared with app-start.sh (tools/checks/app-start-lib.sh).
 # Unlike app-start.sh this script never signs: an unsigned or broken APK must turn it red.
-# <previous.apk> is only set by counterprobe 10c (update signed with another key).
+# <previous.apk> is only set by counterprobe 15c (update signed with another key).
 set -euo pipefail
 apk="$1" min_sdk="$2" previous="${3:-$1}"
 package="de.uchilab.todo"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # S2a: the APK to try out, compared against the fingerprint.txt of another key, must fail
 # tryout-apk-check.sh. Shows that a restored key dir is really compared with the signature (AK 4).
-# Needs no device, but the signed APK of the job tryout-apk; runs there with the other counterprobes 10.
+# Needs no device, but the signed APK of the job tryout-apk; runs there with the other counterprobes 15.
 source "$(dirname "$0")/lib.sh"
 : "${TRYOUT_APK:?TRYOUT_APK is not set}"
 min_sdk="$("$src/tools/ci/tryout-min-sdk.sh" "$src")"
