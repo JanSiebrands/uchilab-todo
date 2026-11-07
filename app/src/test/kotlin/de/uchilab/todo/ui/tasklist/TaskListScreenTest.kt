@@ -119,6 +119,7 @@ class TaskListScreenTest {
         composeRule.onNodeWithTag(TaskListTags.EMPTY).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.task_list_empty_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.task_list_empty_body)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.task_list_empty_hint)).assertIsDisplayed()
         composeRule.onAllNodesWithTag(TaskListTags.LIST).assertCountEquals(0)
     }
 
@@ -131,7 +132,7 @@ class TaskListScreenTest {
     }
 
     @Test
-    fun `the empty state does not promise the new task action before story S4`() {
+    fun `the empty state list itself offers no click target, the action lives in the main screen`() {
         show(TaskListUiState.Loaded(emptyList()))
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
     }

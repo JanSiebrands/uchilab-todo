@@ -5,6 +5,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -66,6 +68,15 @@ class NewTaskScreenTest {
 
     private fun main(state: TaskListUiState, onNewTask: () -> Unit = {}) {
         composeRule.setContent { AppTheme { MainScreen(state, onNewTask = onNewTask) } }
+    }
+
+    @Test
+    fun `the keyboard action of the title field moves the focus to the note field`() {
+        show(open())
+        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).assertIsFocused()
+        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).performImeAction()
+        composeRule.onNodeWithTag(NewTaskTags.NOTE_FIELD).assertIsFocused()
+        assertTrue(recorder.calls.contains("focus-NOTE"))
     }
 
     @Test
