@@ -349,6 +349,19 @@ class TaskRepositoryTest {
         assertEquals("done", rawRow(task.id.value).second)
     }
 
+    /**
+     * The exception and everything in its chain are plain [TaskReadException]s without a message: the
+     * storage exception (its message can contain values) must not hang on as a cause. The chain can have
+     * more than one link only because coroutines' stack trace recovery (tests only) wraps a copy.
+     */
+    private fun assertReadFailureWithoutDetails(error: Throwable?) {
+        assertTrue("was $error", error is TaskReadException)
+        generateSequence(error) { it.cause }.forEach {
+            assertTrue("chain contains $it", it is TaskReadException)
+            assertNull(it.message)
+        }
+    }
+
     @Test
     fun `an unknown stored status fails loading without revealing any value`() {
         runBlocking {
@@ -359,9 +372,7 @@ class TaskRepositoryTest {
             }
         }
         val error = runCatching { load() }.exceptionOrNull()
-        assertTrue(error is TaskReadException)
-        assertNull(error?.message)
-        assertNull(error?.cause)
+        assertReadFailureWithoutDetails(error)
     }
 
     @Test
@@ -374,9 +385,7 @@ class TaskRepositoryTest {
             }
         }
         val error = runCatching { load() }.exceptionOrNull()
-        assertTrue(error is TaskReadException)
-        assertNull(error?.message)
-        assertNull(error?.cause)
+        assertReadFailureWithoutDetails(error)
     }
 
     @Test
@@ -386,9 +395,7 @@ class TaskRepositoryTest {
             db.useWriterConnection { connection -> connection.usePrepared("DROP TABLE task") { it.step() } }
         }
         val error = runCatching { load() }.exceptionOrNull()
-        assertTrue("was $error", error is TaskReadException)
-        assertNull(error?.message)
-        assertNull(error?.cause)
+        assertReadFailureWithoutDetails(error)
     }
 
     @Test

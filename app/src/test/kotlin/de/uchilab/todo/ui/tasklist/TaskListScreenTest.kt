@@ -46,9 +46,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /** Stateless screen tests. Texts come from the resources of the test configuration, never literal. */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE) // real text measuring, needed for line counts
 class TaskListScreenTest {
 
     @get:Rule

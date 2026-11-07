@@ -4,6 +4,7 @@ import android.database.SQLException
 import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskContent
 import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.domain.TaskReadException
 import de.uchilab.todo.domain.TaskRepository
 import de.uchilab.todo.domain.TaskStatus
 import de.uchilab.todo.domain.WriteError
@@ -11,6 +12,7 @@ import de.uchilab.todo.domain.WriteResult
 import java.time.Clock
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 class RoomTaskRepository(
@@ -18,7 +20,14 @@ class RoomTaskRepository(
     private val clock: Clock = Clock.systemUTC(),
 ) : TaskRepository {
 
-    override fun observeTasks(): Flow<List<Task>> = dao.observeAll().map { rows -> rows.map(TaskEntity::toDomain) }
+    /**
+     * A failing read ends the stream with [TaskReadException]. Only the SQLite exception type of the driver
+     * is translated, so a `CancellationException` and programming errors pass through. The cause is dropped:
+     * its message can contain values (security L3).
+     */
+    override fun observeTasks(): Flow<List<Task>> = dao.observeAll()
+        .map { rows -> rows.map(TaskEntity::toDomain) }
+        .catch { if (it is SQLException) throw TaskReadException() else throw it }
 
     override suspend fun add(content: TaskContent): WriteResult<Task> = write {
         val createdAt = Instant.ofEpochMilli(clock.millis())

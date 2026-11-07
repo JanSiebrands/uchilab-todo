@@ -16,7 +16,11 @@ sealed interface WriteResult<out T> {
 }
 
 interface TaskRepository {
-    /** Newest task first. The first emission is the loaded state, later ones follow every change. */
+    /**
+     * Newest task first. The first emission is the loaded state, later ones follow every change.
+     * If reading fails (storage error or damaged stored values) the flow ends with a [TaskReadException],
+     * never with an exception of the storage layer.
+     */
     fun observeTasks(): Flow<List<Task>>
 
     /** Stores a new open task with the current time. */
