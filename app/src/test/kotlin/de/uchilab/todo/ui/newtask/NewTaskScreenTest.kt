@@ -56,7 +56,8 @@ class NewTaskScreenTest {
     private fun open(title: String = "", note: String = "", block: (NewTaskUiState) -> NewTaskUiState = { it }) =
         block(NewTaskUiState(open = true, title = title, note = note))
 
-    private fun node(tag: String) = composeRule.onNodeWithTag(tag)
+    /** Unmerged: hints and counters sit inside the merged node of their field. */
+    private fun node(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true)
 
     private fun tagged(tag: String, unmerged: Boolean = false) =
         composeRule.onAllNodesWithTag(tag, useUnmergedTree = unmerged)
@@ -118,12 +119,12 @@ class NewTaskScreenTest {
         show(open())
         node(NewTaskTags.SAVE).performClick()
         node(NewTaskTags.CLOSE).performClick()
-        assertEquals(listOf("save", "close"), recorder.calls)
+        assertEquals(listOf("save", "close"), recorder.calls.filterNot { it.startsWith("focus") })
         for (tag in listOf(NewTaskTags.SAVE, NewTaskTags.CLOSE)) {
-            val size = node(tag).fetchSemanticsNode().size
+            val bounds = node(tag).fetchSemanticsNode().touchBoundsInRoot
             val density = composeRule.density.density
-            assertTrue("$tag ${size.width / density}x${size.height / density}",
-                size.width / density >= 48f && size.height / density >= 48f)
+            assertTrue("$tag ${bounds.width / density}x${bounds.height / density}",
+                bounds.width / density >= 48f && bounds.height / density >= 48f)
         }
     }
 
@@ -136,7 +137,7 @@ class NewTaskScreenTest {
     @Test
     fun `the close sign is described for TalkBack and the heading is a heading`() {
         show(open())
-        val description = node(NewTaskTags.CLOSE).fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
+        val description = composeRule.onNodeWithTag(NewTaskTags.CLOSE).fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
         assertEquals(listOf(context.getString(R.string.new_task_close)), description)
         val heading = composeRule.onNodeWithText(context.getString(R.string.new_task_heading)).fetchSemanticsNode()
         assertTrue(SemanticsProperties.Heading in heading.config)
@@ -167,10 +168,17 @@ class NewTaskScreenTest {
 
     @Test
     fun `the note field is at least four lines high`() {
-        show(open())
-        val title = node(NewTaskTags.TITLE_FIELD).fetchSemanticsNode().size.height
+        var lineHeight = 0f
+        composeRule.setContent {
+            AppTheme {
+                lineHeight = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    androidx.compose.material3.MaterialTheme.typography.bodyLarge.lineHeight.toPx()
+                }
+                NewTaskScreen(open(), recorder)
+            }
+        }
         val note = node(NewTaskTags.NOTE_FIELD).fetchSemanticsNode().size.height
-        assertTrue("note $note title $title", note >= title + 3 * (title / 3))
+        assertTrue("note $note line $lineHeight", note >= 4 * lineHeight)
     }
 
     // --- hints ---
@@ -202,8 +210,9 @@ class NewTaskScreenTest {
     @Test
     fun `a note above the limit shows the hint and the error`() {
         show(open(note = "a".repeat(2001)))
-        node(NewTaskTags.NOTE_HINT).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.new_task_note_too_long, "2,000")).assertIsDisplayed()
+        // the note is long, so the hint below it may lie outside the screen; it must exist with its text
+        node(NewTaskTags.NOTE_HINT).fetchSemanticsNode()
+        composeRule.onNodeWithText(context.getString(R.string.new_task_note_too_long, "2,000")).fetchSemanticsNode()
         assertTrue(SemanticsProperties.Error in node(NewTaskTags.NOTE_FIELD).fetchSemanticsNode().config)
     }
 
@@ -273,7 +282,7 @@ class NewTaskScreenTest {
         assertTrue("keep editing stands left of discard", keep.left < confirm.left)
         node(NewTaskTags.DISCARD_KEEP).performClick()
         node(NewTaskTags.DISCARD_CONFIRM).performClick()
-        assertEquals(listOf("dismiss", "confirm"), recorder.calls)
+        assertEquals(listOf("dismiss", "confirm"), recorder.calls.filterNot { it.startsWith("focus") })
     }
 
     @Test

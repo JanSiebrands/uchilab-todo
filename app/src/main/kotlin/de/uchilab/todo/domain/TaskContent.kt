@@ -39,16 +39,16 @@ class TaskContent private constructor(val title: String, val note: String?) {
          * The trimmed values are what gets stored.
          */
         /** Each line break becomes one space; does not trim and does not shorten. */
-        fun singleLine(raw: String): String = raw
+        fun singleLine(raw: String): String = raw.replace(LINE_BREAK, " ")
 
         /** Length of a title as [of] counts it (graphemes of the single-line, trimmed title). */
-        fun titleLength(raw: String): Int = 0
+        fun titleLength(raw: String): Int = graphemeCount(singleLine(raw).trim())
 
         /** Length of a note as [of] counts it (graphemes of the trimmed note). */
-        fun noteLength(raw: String): Int = 0
+        fun noteLength(raw: String): Int = graphemeCount(raw.trim())
 
         fun of(title: String, note: String?): Validated {
-            val cleanTitle = title.replace(LINE_BREAK, " ").trim()
+            val cleanTitle = singleLine(title).trim()
             val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }
             val reasons = buildSet {
                 if (cleanTitle.isEmpty()) add(InvalidReason.TITLE_EMPTY)

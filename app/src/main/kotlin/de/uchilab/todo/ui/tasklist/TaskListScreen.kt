@@ -118,6 +118,7 @@ private fun EmptyState(modifier: Modifier) {
         iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
         title = stringResource(R.string.task_list_empty_title),
         body = stringResource(R.string.task_list_empty_body),
+        hint = stringResource(R.string.task_list_empty_hint),
         modifier = modifier,
         contentModifier = Modifier.testTag(TaskListTags.EMPTY),
     )
@@ -144,6 +145,7 @@ private fun Notice(
     body: String,
     modifier: Modifier,
     contentModifier: Modifier,
+    hint: String? = null,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val minHeight = maxHeight
@@ -176,6 +178,15 @@ private fun Notice(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
     }
 }

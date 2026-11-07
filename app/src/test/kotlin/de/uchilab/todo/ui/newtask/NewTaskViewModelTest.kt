@@ -124,15 +124,23 @@ class NewTaskViewModelTest {
 
     @Test
     fun `text far above the limit is cut at the protection limit without splitting a surrogate pair`() {
-        opened().onNoteChange("b".repeat(30_000))
-        assertEquals(20_000, viewModel.state.note.length)
-        viewModel.onNoteChange("b".repeat(19_999) + "😀")
-        assertEquals(19_999, viewModel.state.note.length)
+        opened().onNoteChange("b".repeat(50_000))
+        assertEquals(40_000, viewModel.state.note.length)
+        viewModel.onNoteChange("b".repeat(39_999) + "😀")
+        assertEquals(39_999, viewModel.state.note.length)
         assertTrue(viewModel.state.note.none { it.isSurrogate() })
         viewModel.onTitleChange("a".repeat(5_000))
-        assertEquals(2_000, viewModel.state.title.length)
-        viewModel.onTitleChange("a".repeat(1_999) + "😀")
-        assertEquals(1_999, viewModel.state.title.length)
+        assertEquals(4_000, viewModel.state.title.length)
+        viewModel.onTitleChange("a".repeat(3_999) + "😀")
+        assertEquals(3_999, viewModel.state.title.length)
+    }
+
+    @Test
+    fun `the protection limit leaves room for 200 and 2000 emoji sequences`() {
+        opened().onTitleChange(family.repeat(200))
+        viewModel.onNoteChange(family.repeat(2000))
+        assertEquals(200, viewModel.state.titleLength)
+        assertEquals(2000, viewModel.state.noteLength)
     }
 
     @Test
@@ -329,6 +337,16 @@ class NewTaskViewModelTest {
         opened().onTitleChange("Aufgabe 1")
         viewModel.onCloseRequest()
         viewModel.onDiscardDismiss()
+        assertTrue(viewModel.state.open)
+        assertFalse(viewModel.state.discardDialog)
+        assertEquals("Aufgabe 1", viewModel.state.title)
+    }
+
+    @Test
+    fun `a close request while the dialog is open closes only the dialog`() {
+        opened().onTitleChange("Aufgabe 1")
+        viewModel.onCloseRequest()
+        viewModel.onCloseRequest()
         assertTrue(viewModel.state.open)
         assertFalse(viewModel.state.discardDialog)
         assertEquals("Aufgabe 1", viewModel.state.title)
