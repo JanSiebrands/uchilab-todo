@@ -7,6 +7,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -340,6 +344,33 @@ class TaskListScreenTest {
         show(TaskListUiState.ReadFailed)
         composeRule.onNodeWithTag(TaskListTags.ERROR).assertIsDisplayed()
         assertNoDescriptionInUnmergedTree()
+    }
+
+    private fun countPixelsOfThemeColor(state: TaskListUiState, pick: (androidx.compose.material3.ColorScheme) -> Color): Pair<Int, Int> {
+        var expected = Color.Unspecified
+        composeRule.setContent {
+            AppTheme {
+                expected = pick(MaterialTheme.colorScheme)
+                TaskListScreen(state, rememberLazyListState())
+            }
+        }
+        val image = composeRule.onNodeWithTag(TaskListTags.SIGN).captureToImage()
+        val pixels = IntArray(image.width * image.height)
+        image.readPixels(pixels)
+        val target = expected.toArgb()
+        return pixels.count { it == target } to pixels.size
+    }
+
+    @Test
+    fun `the sign of the empty state is drawn in the colour of the theme`() {
+        val (matching, total) = countPixelsOfThemeColor(TaskListUiState.Loaded(emptyList())) { it.onSurfaceVariant }
+        assertTrue("only $matching of $total pixels have the theme colour", matching * 100 >= total * 5)
+    }
+
+    @Test
+    fun `the sign of the read failure notice is drawn in the colour of the theme`() {
+        val (matching, total) = countPixelsOfThemeColor(TaskListUiState.ReadFailed) { it.error }
+        assertTrue("only $matching of $total pixels have the theme colour", matching * 100 >= total * 5)
     }
 
     @Test

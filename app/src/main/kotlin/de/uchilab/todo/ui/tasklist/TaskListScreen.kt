@@ -1,5 +1,6 @@
 package de.uchilab.todo.ui.tasklist
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,7 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -113,7 +114,7 @@ private fun contentDirection(style: TextStyle): TextStyle = style.copy(textDirec
 @Composable
 private fun EmptyState(modifier: Modifier) {
     Notice(
-        icon = TaskListIcons.Sheet,
+        icon = R.drawable.ic_task_list_empty,
         iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
         title = stringResource(R.string.task_list_empty_title),
         body = stringResource(R.string.task_list_empty_body),
@@ -125,7 +126,7 @@ private fun EmptyState(modifier: Modifier) {
 @Composable
 private fun ReadFailedState(modifier: Modifier) {
     Notice(
-        icon = TaskListIcons.Alert,
+        icon = R.drawable.ic_task_list_error,
         iconTint = MaterialTheme.colorScheme.error,
         title = stringResource(R.string.task_list_error_title),
         body = stringResource(R.string.task_list_error_body),
@@ -137,7 +138,7 @@ private fun ReadFailedState(modifier: Modifier) {
 /** Centered sign, heading and explanation; scrolls so nothing is cut off at 200 % text or in landscape. */
 @Composable
 private fun Notice(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     iconTint: Color,
     title: String,
     body: String,
@@ -155,7 +156,12 @@ private fun Notice(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = iconTint)
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.testTag(TaskListTags.SIGN),
+            )
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,

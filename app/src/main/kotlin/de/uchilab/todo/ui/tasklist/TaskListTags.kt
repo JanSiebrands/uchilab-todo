@@ -8,4 +8,5 @@ object TaskListTags {
     const val ITEM_NOTE = "task_item_note"
     const val EMPTY = "task_list_empty"
     const val ERROR = "task_list_error"
+    const val SIGN = "task_list_sign"
 }
