@@ -360,4 +360,41 @@ class TaskRepositoryTest {
         assertTrue(error is IllegalStateException)
         assertFalse(error?.message.orEmpty().contains("MARKER"))
     }
+
+    @Test
+    fun `opening a file with a newer format version fails and keeps every row`() {
+        add("Milch")
+        db.close()
+        val path = context.getDatabasePath(TaskDatabase.DATABASE_NAME).path
+        setUserVersion(path, 2)
+        val opened = TaskDatabase.create(context)
+        val failed = try {
+            runBlocking { withTimeout(10_000) { RoomTaskRepository(opened.taskDao(), clock).observeTasks().first() } }
+            false
+        } catch (_: Exception) {
+            true
+        } finally {
+            opened.close()
+        }
+        assertTrue("a newer format must not open silently", failed)
+        assertEquals(1, rowCount(path))
+    }
+
+    private fun setUserVersion(path: String, version: Int) {
+        val raw = android.database.sqlite.SQLiteDatabase.openDatabase(path, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE)
+        try {
+            raw.execSQL("PRAGMA user_version = $version")
+        } finally {
+            raw.close()
+        }
+    }
+
+    private fun rowCount(path: String): Int {
+        val raw = android.database.sqlite.SQLiteDatabase.openDatabase(path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+        try {
+            raw.rawQuery("SELECT COUNT(*) FROM task", null).use { it.moveToFirst(); return it.getInt(0) }
+        } finally {
+            raw.close()
+        }
+    }
 }
