@@ -5,8 +5,8 @@
 set -euo pipefail
 sdk="${ANDROID_HOME:?ANDROID_HOME is not set}"
 revision() { grep -E '^Pkg.Revision=' "$1" | cut -d= -f2- || echo unknown; }
-emulator="$("$sdk/emulator/emulator" -version 2>&1 || true)"
-echo "emulator-versions: $(grep -m 1 'emulator version' <<<"$emulator" || echo 'emulator version unknown')"
+# The emulator itself also logs "Android emulator version ... (build_id ...)" when it boots.
+echo "emulator-versions: emulator revision $(revision "$sdk/emulator/source.properties")"
 for props in "$sdk"/system-images/*/*/*/source.properties; do
   image="${props#"$sdk/system-images/"}"
   echo "emulator-versions: system image ${image%/source.properties} revision $(revision "$props")"
