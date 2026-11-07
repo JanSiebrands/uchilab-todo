@@ -85,7 +85,10 @@ class TaskListIntegrationTest {
     @Test
     fun `a task added while the list is open appears without restart`() {
         launch()
-        composeRule.waitForIdle()
+        // wait until the first (empty) result is shown, so the task is added to an already open list
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag(TaskListTags.EMPTY).fetchSemanticsNodes().isNotEmpty()
+        }
         add("Aufgabe live")
         waitForItems(1)
         assertEquals(listOf("Aufgabe live"), visibleTitles())

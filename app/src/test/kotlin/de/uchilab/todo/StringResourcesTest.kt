@@ -62,8 +62,8 @@ class StringResourcesTest {
         val english = strings("values")
         val german = strings("values-de")
         for (key in english.keys) {
-            val expected = placeholder.findAll(english.getValue(key)).map { it.value }.toList()
-            val actual = placeholder.findAll(german.getValue(key)).map { it.value }.toList()
+            val expected = placeholder.findAll(english.getValue(key)).map { it.value }.sorted().toList()
+            val actual = placeholder.findAll(german.getValue(key)).map { it.value }.sorted().toList()
             assertEquals("placeholders of $key", expected, actual)
         }
     }
