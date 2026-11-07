@@ -17,4 +17,5 @@ step "$here/counterprobes/16a-seed-missing-emulator.sh" "$apks/debug/app-debug.a
 step "$here/counterprobes/16b-deleted-after-reboot-emulator.sh" "$apks/release/app-release-unsigned.apk" "$seed"
 step "$here/counterprobes/16c-order-swapped-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
 step "$here/counterprobes/16d-r8-breaks-room-emulator.sh" "$seed"
+step "$here/counterprobes/16e-pidof-hangs-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
 echo "emulator-run: all emulator checks and counterprobes OK"

@@ -85,6 +85,22 @@ print("all titles in order: " + ", ".join(titles))
 PY
 }
 
+# wait_process_gone: waits up to 30 s until pidof answers "no such process" (exit 1). A hanging adb (timeout,
+# exit 124) or any other error does not count as "process ended" and aborts with a clear message.
+wait_process_gone() {
+  local end=$((SECONDS + 30)) status
+  while :; do
+    status=0
+    timeout 10 adb shell pidof "$package" >/dev/null 2>&1 || status=$?
+    case "$status" in
+      1) return 0 ;;
+      0) [ "$SECONDS" -lt "$end" ] || fail "timeout after 30s: process still running after force-stop"; sleep 2 ;;
+      124) fail "adb shell pidof did not answer within 10s (adb hangs), process end unknown" ;;
+      *) fail "adb shell pidof failed with exit $status, process end unknown" ;;
+    esac
+  done
+}
+
 crashed() { timeout 30 adb logcat -b crash -d | tr -d '\r' | grep -F "$package"; }
 
 # check_list <step>: starts the app and waits until the list shows the expected titles in order; no crash.
@@ -132,7 +148,7 @@ log "seed installed (owner $owner)"
 check_list "after start"
 
 timeout 30 adb shell am force-stop "$package"
-wait_until 30 "process ended after force-stop" bash -c "! timeout 10 adb shell pidof $package"
+wait_process_gone
 check_list "after process end"
 
 timeout 60 adb reboot || fail "adb reboot failed"
