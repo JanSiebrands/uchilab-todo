@@ -45,6 +45,11 @@ class PrivacyCheckPlugin : Plugin<Project> {
             task.permissionAllowlist.set(extension.permissionAllowlist)
             task.storedFields.set(extension.storedFields)
             task.schemaDirectory.set(extension.schemaDirectory)
+            // Room's generated <database>_Impl carries the database version and schema identity hash of the code.
+            task.generatedRoomCode.from(
+                project.fileTree(project.layout.buildDirectory.dir(KSP_DEBUG_SOURCES)) { it.include("**/*_Impl.kt") },
+            )
+            task.generatedRoomRoot.set(project.layout.buildDirectory.dir(KSP_DEBUG_SOURCES))
             // All source sets; SourceCheck itself drops the test source sets, so that rule has unit tests.
             task.appSources.from(project.fileTree("src") { it.include("**/*.kt", "**/*.java") })
             // KSP generates the Room schema from the current code; only if it differs from the checked-in one,
@@ -72,6 +77,7 @@ class PrivacyCheckPlugin : Plugin<Project> {
         const val R8_TASK = "minifyReleaseWithR8"
         const val ROOM_SCHEMA_TASK = "copyRoomSchemas"
         val KSP_TASKS = listOf("kspDebugKotlin", "kspReleaseKotlin")
+        const val KSP_DEBUG_SOURCES = "generated/ksp/debug/kotlin"
     }
 }
 
@@ -108,6 +114,8 @@ abstract class PrivacyCheckTask : DefaultTask() {
     @get:InputFile abstract val storedFields: RegularFileProperty
     /** Internal: a missing directory must be a violation of the check, not a task validation error. */
     @get:Internal abstract val schemaDirectory: DirectoryProperty
+    @get:InputFiles abstract val generatedRoomCode: ConfigurableFileCollection
+    @get:Internal abstract val generatedRoomRoot: DirectoryProperty
 
     @TaskAction
     fun run() {
@@ -131,7 +139,13 @@ abstract class PrivacyCheckTask : DefaultTask() {
         val databases = schemaDirectory.get().asFile.listFiles { f -> f.isDirectory }.orEmpty().associate { dir ->
             dir.name to dir.listFiles { f -> f.isFile }.orEmpty().associate { it.name to it.readText() }
         }
-        violations += StoredFieldsCheck.check(databases, storedFields.get().asFile.readText())
+        val generatedRoot = generatedRoomRoot.get().asFile
+        val generated = generatedRoomCode.files.map { it to it.readText() }
+            .filter { (_, code) -> "RoomOpenDelegate(" in code }
+            .associate { (file, code) ->
+                file.relativeTo(generatedRoot).invariantSeparatorsPath.removeSuffix("_Impl.kt").replace('/', '.') to code
+            }
+        violations += StoredFieldsCheck.check(databases, generated, storedFields.get().asFile.readText())
             .map { "[stored fields] $it" }
         val classpaths = project.configurations.filter {
             it.isCanBeResolved && CLASSPATH_NAME.matches(it.name)
