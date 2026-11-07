@@ -17,8 +17,12 @@ if grep -q '^application-debuggable' <<<"$badging"; then fail "APK is debuggable
 verify="$("$bt/apksigner" verify --verbose --print-certs "$apk" 2>&1)" || fail "signature does not verify"
 grep -qF 'Verified using v2 scheme (APK Signature Scheme v2): true' <<<"$verify" || fail "no v2 signature"
 [ "$(grep -c '^Number of signers: 1$' <<<"$verify")" -eq 1 ] || fail "expected exactly one signer"
-cert="$(sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p' <<<"$verify")"
-[ -n "$cert" ] || fail "no certificate digest"
+# The signer label depends on the build-tools version ("Signer #1 certificate ..." up to 36,
+# "V3.0 Signer: certificate ..." from 37), so only the part after the label is matched.
+certs="$(sed -nE 's/^.*[Ss]igner.* certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p' <<<"$verify" | sort -u)"
+[ -n "$certs" ] || fail "no certificate digest"
+[ "$(wc -l <<<"$certs")" -eq 1 ] || fail "more than one certificate digest"
+cert="$certs"
 if [ -n "$fp_file" ]; then
   [ "$cert" = "$(cat "$fp_file")" ] || fail "certificate $cert differs from the key of this pull request ($(cat "$fp_file"))"
 fi
