@@ -61,7 +61,12 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - run: ./gradlew --console=plain assembleDebug assembleRelease
+      # The seed for emulator-tasks.sh: invented tasks written by the S2 data layer (EmulatorSeedTest), only in
+      # app/build/emulator-seed, never checked in.
+      - run: >-
+          ./gradlew --console=plain assembleDebug assembleRelease
+          :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
+          -Puchilab.seedOut="$PWD/app/build/emulator-seed"
       # Hardware acceleration for the emulator (standard Linux runners have KVM).
       - name: Enable KVM
         run: |

@@ -42,6 +42,8 @@ android {
         unitTests.all {
             // Robolectric for recent Android SDKs reflects into JDK internals.
             it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+            // Output dir of EmulatorSeedTest (tools/checks/emulator-tasks.sh); without it the test is skipped.
+            providers.gradleProperty("uchilab.seedOut").orNull?.let { dir -> it.systemProperty("uchilab.seedOut", dir) }
         }
     }
 
