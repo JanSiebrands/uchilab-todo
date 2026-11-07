@@ -25,6 +25,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.test.core.app.ApplicationProvider
@@ -296,6 +297,89 @@ class TaskListScreenTest {
         assertEquals(2, nodes.size)
         assertEquals(nodes[0].size.height, nodes[1].size.height)
         unmerged(TaskListTags.ITEM_NOTE).assertCountEquals(2)
+    }
+
+    // --- structure: headings, decorative signs, size, spacing, keys ---
+
+    private fun isHeading() = SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)
+
+    @Test
+    fun `the bar title is a heading`() {
+        composeRule.setContent { AppTheme { MainScreen(TaskListUiState.Loaded(emptyList())) } }
+        composeRule.onNodeWithText(context.getString(R.string.app_name)).assert(isHeading())
+    }
+
+    @Test
+    fun `the title of the empty state is a heading`() {
+        show(TaskListUiState.Loaded(emptyList()))
+        composeRule.onNodeWithText(context.getString(R.string.task_list_empty_title)).assert(isHeading())
+    }
+
+    @Test
+    fun `the title of the read failure notice is a heading`() {
+        show(TaskListUiState.ReadFailed)
+        composeRule.onNodeWithText(context.getString(R.string.task_list_error_title)).assert(isHeading())
+    }
+
+    private fun assertNoDescriptionInUnmergedTree() {
+        composeRule.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription),
+            useUnmergedTree = true,
+        ).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the sign of the empty state is hidden from TalkBack`() {
+        show(TaskListUiState.Loaded(emptyList()))
+        composeRule.onNodeWithTag(TaskListTags.EMPTY).assertIsDisplayed()
+        assertNoDescriptionInUnmergedTree()
+    }
+
+    @Test
+    fun `the sign of the read failure notice is hidden from TalkBack`() {
+        show(TaskListUiState.ReadFailed)
+        composeRule.onNodeWithTag(TaskListTags.ERROR).assertIsDisplayed()
+        assertNoDescriptionInUnmergedTree()
+    }
+
+    @Test
+    fun `an entry with a short title is at least 56 dp high`() {
+        show(TaskListUiState.Loaded(listOf(task(1, "A"))))
+        val minimum = with(composeRule.density) { 56.dp.roundToPx() }
+        val height = composeRule.onNodeWithTag(TaskListTags.ITEM).fetchSemanticsNode().size.height
+        assertTrue("height $height below $minimum", height >= minimum)
+    }
+
+    @Test
+    fun `the last entry ends at least 96 dp above the bottom of the list`() {
+        val tasks = (30L downTo 1L).map { task(it, "Aufgabe $it") }
+        show(TaskListUiState.Loaded(tasks))
+        composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(tasks.lastIndex)
+        composeRule.waitForIdle()
+        val list = composeRule.onNodeWithTag(TaskListTags.LIST).fetchSemanticsNode().boundsInRoot
+        val last = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()
+            .maxOf { it.boundsInRoot.bottom }
+        val space = with(composeRule.density) { 96.dp.toPx() }
+        assertTrue("gap ${list.bottom - last} below $space", list.bottom - last >= space)
+    }
+
+    @Test
+    fun `a task added on top does not move the entry the user is looking at`() {
+        val old = (20L downTo 1L).map { task(it, "Aufgabe $it") }
+        var tasks by mutableStateOf(old)
+        lateinit var listState: androidx.compose.foundation.lazy.LazyListState
+        composeRule.setContent {
+            listState = rememberLazyListState()
+            AppTheme { TaskListScreen(TaskListUiState.Loaded(tasks), listState) }
+        }
+        composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(8)
+        composeRule.waitForIdle()
+        val watched = old[listState.firstVisibleItemIndex].id
+
+        tasks = listOf(task(21, "Neu")) + old
+        composeRule.waitForIdle()
+
+        assertEquals(watched, tasks[listState.firstVisibleItemIndex].id)
     }
 
     // --- scroll position after process death ---
