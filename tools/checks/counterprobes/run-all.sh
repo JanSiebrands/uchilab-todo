@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs all counterprobes that need no emulator; the exit code decides. *-emulator.sh run in the emulator job.
+# Runs all counterprobes that need no emulator; the exit code decides. *-emulator.sh (07b, 16a to 16e) run
+# in the emulator job, 15a-tryout to 15f-tryout in the job tryout-apk (tools/ci/tryout-emulator-run.sh).
 # Usage: run-all.sh            (against this repository)
 #        COUNTERPROBE_SOURCE=<dir> run-all.sh   (against another tree, e.g. an old commit)
 set -uo pipefail
@@ -7,7 +8,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 failed=()
 for probe in "$here"/[0-9]*.sh; do
   name="$(basename "$probe")"
-  case "$name" in *-emulator.sh) continue ;; esac
+  case "$name" in *-emulator.sh|15[a-f]-tryout-*) continue ;; esac
   echo "::group::$name"
   if "$probe"; then echo "PASS $name"; else echo "FAIL $name"; failed+=("$name"); fi
   echo "::endgroup::"
