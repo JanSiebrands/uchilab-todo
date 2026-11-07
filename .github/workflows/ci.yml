@@ -15,12 +15,21 @@ on:
 permissions:
   contents: read
 
+# Commit the reviewers were handed: the head of the pull request (not the merge commit github.sha), otherwise
+# the pushed commit. Part of every artifact name (UCH-69).
+env:
+  REVIEW_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   build:
     name: Build, tests, lint, R8, privacy check
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Rules of the reviewer artifacts below and in the emulator job (UCH-69).
+      - run: tools/ci/review-artifacts-check.sh
+      # No Kotlin daemon and no long idle Gradle daemon on the shared machine (UCH-69).
+      - run: tools/ci/gradle-daemon-check.sh
       # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
       - run: tools/checks/wrapper-check.sh
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -30,7 +39,35 @@ jobs:
           cache: gradle
       # Debug build, unit and UI tests, lint, release build with R8 (unsigned), R8 result check,
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
-      - run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+      - id: gradle
+        run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+      # Reviewers read this run instead of building themselves (UCH-66): reports, debug APK and R8 mapping,
+      # also after a red build. Build outputs only, no signing key, no secret (the repository is public).
+      - if: always()
+        run: tools/ci/review-artifacts.sh "$RUNNER_TEMP/review" "$GRADLE_OUTCOME"
+        env:
+          GRADLE_OUTCOME: ${{ steps.gradle.outcome }}
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reports-${{ env.REVIEW_SHA }}
+          path: ${{ runner.temp }}/review/reports
+          retention-days: 14
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: debug-apk-${{ env.REVIEW_SHA }}
+          path: ${{ runner.temp }}/review/apk
+          retention-days: 14
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: r8-mapping-${{ env.REVIEW_SHA }}
+          path: ${{ runner.temp }}/review/r8
+          retention-days: 14
+          if-no-files-found: error
 
   counterprobes:
     name: Counterprobes (each check turns red on a built-in defect)
@@ -73,6 +110,14 @@ jobs:
           target: aosp_atd
           arch: x86_64
           script: tools/checks/emulator-run.sh
+      # Logs written by tools/checks/emulator-run.sh (logcat), also after a red run.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: emulator-logs-${{ env.REVIEW_SHA }}
+          path: app/build/emulator-artifacts
+          retention-days: 14
+          if-no-files-found: error
 
   secrets:
     name: Secret scan
