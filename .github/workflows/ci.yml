@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Rules of the reviewer artifacts below and in the emulator job (UCH-69).
       - run: tools/ci/review-artifacts-check.sh
+      # No Kotlin daemon and no long idle Gradle daemon on the shared machine (UCH-69).
+      - run: tools/ci/gradle-daemon-check.sh
       # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
       - run: tools/checks/wrapper-check.sh
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
