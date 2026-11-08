@@ -5,9 +5,12 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
@@ -50,6 +53,16 @@ class PrivacyCheckPlugin : Plugin<Project> {
                 project.fileTree(project.layout.buildDirectory.dir(KSP_DEBUG_SOURCES)) { it.include("**/*_Impl.kt") },
             )
             task.generatedRoomRoot.set(project.layout.buildDirectory.dir(KSP_DEBUG_SOURCES))
+            // Everything the action reads is set here, at configuration time: Gradle 10 forbids Task.project
+            // in a task action (UCH-68; CI runs with --warning-mode fail, counterprobe 20).
+            task.buildDirectory.set(project.layout.buildDirectory)
+            task.projectDirectory.set(project.layout.projectDirectory)
+            task.rootDirectory.set(project.layout.settingsDirectory)
+            // Resolution graphs of the classpaths as providers; resolved when the action reads them. all {}
+            // also catches classpaths that the Android plugin creates later.
+            project.configurations
+                .matching { it.isCanBeResolved && CLASSPATH_NAME.matches(it.name) }
+                .all { task.classpaths.put(it.name, it.incoming.resolutionResult.rootComponent) }
             // All source sets; SourceCheck itself drops the test source sets, so that rule has unit tests.
             task.appSources.from(project.fileTree("src") { it.include("**/*.kt", "**/*.java") })
             // KSP generates the Room schema from the current code; only if it differs from the checked-in one,
@@ -65,8 +78,10 @@ class PrivacyCheckPlugin : Plugin<Project> {
             task.group = "verification"
             task.description = "Checks that R8 shrank and obfuscated the release build (run with assembleRelease)."
             // Lazy: if minify is off, the task does not exist and r8Check reports that instead of "task not found".
+            // assembleRelease, not only the R8 task: mapping.txt is written after R8 by the Compose mapping
+            // merge (mergeReleaseComposeMapping), so `r8Check` alone found no mapping.txt (UCH-68).
             task.dependsOn(project.provider {
-                if (R8_TASK in project.tasks.names) listOf(project.tasks.named(R8_TASK)) else emptyList()
+                if (R8_TASK in project.tasks.names) listOf(project.tasks.named(RELEASE_TASK)) else emptyList()
             })
             task.minifyTaskPresent.set(project.provider { R8_TASK in project.tasks.names })
             task.mappingDir.set(project.layout.buildDirectory.dir("outputs/mapping/release"))
@@ -75,9 +90,12 @@ class PrivacyCheckPlugin : Plugin<Project> {
 
     companion object {
         const val R8_TASK = "minifyReleaseWithR8"
+        const val RELEASE_TASK = "assembleRelease"
         const val ROOM_SCHEMA_TASK = "copyRoomSchemas"
         val KSP_TASKS = listOf("kspDebugKotlin", "kspReleaseKotlin")
         const val KSP_DEBUG_SOURCES = "generated/ksp/debug/kotlin"
+        /** Runtime and compile classpaths of all variants, including unit test variants. */
+        val CLASSPATH_NAME = Regex("(debug|release)(UnitTest)?(Runtime|Compile)Classpath")
     }
 }
 
@@ -116,6 +134,14 @@ abstract class PrivacyCheckTask : DefaultTask() {
     @get:Internal abstract val schemaDirectory: DirectoryProperty
     @get:InputFiles abstract val generatedRoomCode: ConfigurableFileCollection
     @get:Internal abstract val generatedRoomRoot: DirectoryProperty
+    /** Internal: missing merged manifests must be violations of the check, not task validation errors. */
+    @get:Internal abstract val buildDirectory: DirectoryProperty
+    /** Internal: the app's resource directories below it are looked up by the backup rule check. */
+    @get:Internal abstract val projectDirectory: DirectoryProperty
+    /** Internal: only used to print source paths relative to the repository root. */
+    @get:Internal abstract val rootDirectory: DirectoryProperty
+    /** Root of the resolution graph per classpath configuration name. */
+    @get:Internal abstract val classpaths: MapProperty<String, ResolvedComponentResult>
 
     @TaskAction
     fun run() {
@@ -123,7 +149,7 @@ abstract class PrivacyCheckTask : DefaultTask() {
         val allowedPermissions = permissionAllowlist.get().asFile.readLines()
             .map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }.toSet()
         MERGED_MANIFESTS.forEach { (variant, path) ->
-            val file = project.layout.buildDirectory.file(path).get().asFile
+            val file = buildDirectory.file(path).get().asFile
             if (!file.exists()) {
                 violations += "[$variant manifest] merged manifest not found: ${file.path}"
             } else {
@@ -134,7 +160,7 @@ abstract class PrivacyCheckTask : DefaultTask() {
                 violations += backupViolations(variant, manifest).map { "[$variant backup] $it" }
             }
         }
-        val sources = appSources.files.associate { it.relativeTo(project.rootDir).invariantSeparatorsPath to it.readText() }
+        val sources = appSources.files.associate { it.relativeTo(rootDirectory.get().asFile).invariantSeparatorsPath to it.readText() }
         violations += SourceCheck.check(sources).map { "[source] $it" }
         val databases = schemaDirectory.get().asFile.listFiles { f -> f.isDirectory }.orEmpty().associate { dir ->
             dir.name to dir.listFiles { f -> f.isFile }.orEmpty().associate { it.name to it.readText() }
@@ -147,22 +173,20 @@ abstract class PrivacyCheckTask : DefaultTask() {
             }
         violations += StoredFieldsCheck.check(databases, generated, storedFields.get().asFile.readText())
             .map { "[stored fields] $it" }
-        val classpaths = project.configurations.filter {
-            it.isCanBeResolved && CLASSPATH_NAME.matches(it.name)
-        }
+        val classpaths = classpaths.get()
         if (classpaths.isEmpty()) throw GradleException("privacyCheck: no classpath configurations found")
         val deny = denylist.get().asFile.readText()
         val runtimeAllow = allowlist.get().asFile.readText()
         val runtimePolicy = DependencyPolicy.parse(runtimeAllow, deny)
         val testPolicy = DependencyPolicy.parse(runtimeAllow + "\n" + testAllowlist.get().asFile.readText(), deny)
         val checked = mutableSetOf<String>()
-        classpaths.forEach { configuration ->
-            val coordinates = configuration.incoming.resolutionResult.allComponents
+        classpaths.forEach { (name, root) ->
+            val coordinates = allComponents(root)
                 .mapNotNull { it.id as? ModuleComponentIdentifier }
                 .map { "${it.group}:${it.module}:${it.version}" }
             checked += coordinates
-            val policy = if (configuration.name.contains("UnitTest")) testPolicy else runtimePolicy
-            violations += policy.check(coordinates).map { "[dependencies:${configuration.name}] $it" }
+            val policy = if (name.contains("UnitTest")) testPolicy else runtimePolicy
+            violations += policy.check(coordinates).map { "[dependencies:$name] $it" }
         }
         if (violations.isEmpty()) {
             logger.lifecycle(
@@ -174,6 +198,18 @@ abstract class PrivacyCheckTask : DefaultTask() {
             violations.forEach { logger.error(it) }
             throw GradleException("privacyCheck failed with ${violations.size} violation(s)")
         }
+    }
+
+    /** All components reachable from [root], like `ResolutionResult.allComponents` (root included). */
+    private fun allComponents(root: ResolvedComponentResult): Set<ResolvedComponentResult> {
+        val seen = linkedSetOf(root)
+        val queue = ArrayDeque(listOf(root))
+        while (queue.isNotEmpty()) {
+            queue.removeFirst().dependencies.filterIsInstance<ResolvedDependencyResult>().forEach { dependency ->
+                if (seen.add(dependency.selected)) queue.addLast(dependency.selected)
+            }
+        }
+        return seen
     }
 
     /**
@@ -193,13 +229,13 @@ abstract class PrivacyCheckTask : DefaultTask() {
             }
             val name = reference.removePrefix("@xml/")
             val files = listOf("main", variant).flatMap { sourceSet ->
-                project.file("src/$sourceSet/res").listFiles { f -> f.isDirectory && f.name.matches(Regex("xml(-.+)?")) }
+                projectDirectory.dir("src/$sourceSet/res").get().asFile.listFiles { f -> f.isDirectory && f.name.matches(Regex("xml(-.+)?")) }
                     ?.map { it.resolve("$name.xml") }?.filter { it.isFile }.orEmpty()
             }
             if (files.isEmpty()) {
                 listOf("$attribute: file res/xml/$name.xml not found")
             } else {
-                files.flatMap { file -> check(file.readText()).map { "${file.relativeTo(project.projectDir)}: $it" } }
+                files.flatMap { file -> check(file.readText()).map { "${file.relativeTo(projectDirectory.get().asFile)}: $it" } }
             }
         }
     }
@@ -211,7 +247,5 @@ abstract class PrivacyCheckTask : DefaultTask() {
             "debug" to "intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml",
             "release" to "intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml",
         )
-        /** Runtime and compile classpaths of all variants, including unit test variants. */
-        val CLASSPATH_NAME = Regex("(debug|release)(UnitTest)?(Runtime|Compile)Classpath")
     }
 }
