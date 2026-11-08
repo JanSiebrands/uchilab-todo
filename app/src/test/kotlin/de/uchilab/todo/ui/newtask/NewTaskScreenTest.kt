@@ -83,7 +83,7 @@ class NewTaskScreenTest {
 
     @Test
     fun `the action exists for an empty and for a filled list`() {
-        main(TaskListUiState.Loaded(emptyList()))
+        main(TaskListUiState.Loaded(emptyList(), emptyList()))
         tagged(NewTaskTags.ACTION).assertCountEquals(1)
     }
 
@@ -102,7 +102,7 @@ class NewTaskScreenTest {
     @Test
     fun `tapping the action reports it and it shows its text`() {
         var tapped = 0
-        main(TaskListUiState.Loaded(emptyList())) { tapped++ }
+        main(TaskListUiState.Loaded(emptyList(), emptyList())) { tapped++ }
         node(NewTaskTags.ACTION).assertIsDisplayed().performClick()
         assertEquals(1, tapped)
         composeRule.onNodeWithText(context.getString(R.string.new_task_action), useUnmergedTree = true).assertIsDisplayed()
@@ -110,7 +110,7 @@ class NewTaskScreenTest {
 
     @Test
     fun `the action is at least 56 dp high`() {
-        main(TaskListUiState.Loaded(emptyList()))
+        main(TaskListUiState.Loaded(emptyList(), emptyList()))
         val height = node(NewTaskTags.ACTION).fetchSemanticsNode().size.height
         val dp = height / composeRule.density.density
         assertTrue("height $dp dp", dp >= 56f)
@@ -319,7 +319,7 @@ class NewTaskScreenTest {
     @Test
     fun `the created announcement is a polite live region with its text`() {
         composeRule.setContent {
-            AppTheme { MainScreen(TaskListUiState.Loaded(emptyList()), createdTaskId = TaskId(1), createdAnnouncement = true) }
+            AppTheme { MainScreen(TaskListUiState.Loaded(emptyList(), emptyList()), createdTaskId = TaskId(1), createdAnnouncement = true) }
         }
         val config = tagged(NewTaskTags.CREATED_ANNOUNCEMENT, unmerged = true).fetchSemanticsNodes().single().config
         assertEquals(LiveRegionMode.Polite, config[SemanticsProperties.LiveRegion])
@@ -328,7 +328,7 @@ class NewTaskScreenTest {
 
     @Test
     fun `without a created task the announcement node says nothing`() {
-        main(TaskListUiState.Loaded(emptyList()))
+        main(TaskListUiState.Loaded(emptyList(), emptyList()))
         val nodes = tagged(NewTaskTags.CREATED_ANNOUNCEMENT, unmerged = true).fetchSemanticsNodes()
         assertTrue(nodes.all { SemanticsProperties.ContentDescription !in it.config })
     }

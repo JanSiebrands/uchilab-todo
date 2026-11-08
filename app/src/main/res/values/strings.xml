@@ -35,4 +35,14 @@
     <string name="new_task_discard_confirm">Discard</string>
     <!-- Spoken by TalkBack after a task was created. -->
     <string name="new_task_created">Task added</string>
+    <string name="task_list_done_heading">Done</string>
+    <!-- Spoken only: description of the check box, %1$s = title. -->
+    <string name="task_status_of">Status of “%1$s”</string>
+    <!-- Spoken only: state of the check box and of a done entry. -->
+    <string name="task_status_open">open</string>
+    <string name="task_status_done">done</string>
+    <!-- Spoken after checking off or taking back, %1$s = title. -->
+    <string name="task_status_announce_done">“%1$s” done</string>
+    <string name="task_status_announce_open">“%1$s” open again</string>
+    <string name="task_status_save_failed">Status not saved. The task hasn’t changed, please try again.</string>
 </resources>

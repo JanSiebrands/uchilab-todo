@@ -11,6 +11,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.performClick
+import org.junit.Assert.assertFalse
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -54,6 +62,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** Stateless screen tests. Texts come from the resources of the test configuration, never literal. */
+@OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // real text measuring, needed for line counts
 class TaskListScreenTest {
@@ -66,9 +75,13 @@ class TaskListScreenTest {
     private fun task(id: Long, title: String, note: String? = null, status: TaskStatus = TaskStatus.OPEN): Task =
         Task(TaskId(id), (TaskContent.of(title, note) as Validated.Valid).content, Instant.EPOCH, status)
 
+    private fun loaded(tasks: List<Task>) = tasks.groupByStatus()
+
+    private var onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> }
+
     private fun show(state: TaskListUiState) {
         composeRule.setContent {
-            AppTheme { TaskListScreen(state, rememberLazyListState()) }
+            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange) }
         }
     }
 
@@ -89,7 +102,7 @@ class TaskListScreenTest {
 
     @Test
     fun `the note stands below the title`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "Titel", "Notiz"))))
+        show(loaded(listOf(task(1, "Titel", "Notiz"))))
         val title = unmerged(TaskListTags.ITEM_TITLE).fetchSemanticsNodes().single()
         val note = unmerged(TaskListTags.ITEM_NOTE).fetchSemanticsNodes().single()
         assertTrue(note.boundsInRoot.top >= title.boundsInRoot.bottom)
@@ -97,7 +110,7 @@ class TaskListScreenTest {
 
     @Test
     fun `an entry without a note has no note line and is lower than one with a note`() {
-        show(TaskListUiState.Loaded(listOf(task(2, "Mit", "Notiz"), task(1, "Ohne"))))
+        show(loaded(listOf(task(2, "Mit", "Notiz"), task(1, "Ohne"))))
         unmerged(TaskListTags.ITEM_NOTE).assertCountEquals(1)
         val heights = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes().map { it.size.height }
         assertEquals(2, heights.size)
@@ -106,7 +119,7 @@ class TaskListScreenTest {
 
     @Test
     fun `an entry without a note shows its title`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "Nur Titel"))))
+        show(loaded(listOf(task(1, "Nur Titel"))))
         unmerged(TaskListTags.ITEM_TITLE).assertCountEquals(1)
         unmerged(TaskListTags.ITEM_NOTE).assertCountEquals(0)
     }
@@ -115,7 +128,7 @@ class TaskListScreenTest {
 
     @Test
     fun `an empty loaded list shows the empty state with its texts`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithTag(TaskListTags.EMPTY).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.task_list_empty_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.task_list_empty_body)).assertIsDisplayed()
@@ -133,13 +146,13 @@ class TaskListScreenTest {
 
     @Test
     fun `the empty state list itself offers no click target, the action lives in the main screen`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
     }
 
     @Test
     fun `the empty state is scrollable`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithTag(TaskListTags.EMPTY)
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
     }
@@ -173,7 +186,7 @@ class TaskListScreenTest {
         val title = "Titel eins"
         val note = "Notiz ".repeat(330).trim() // 1979 characters
         assertTrue(note.length in 1900..2000)
-        show(TaskListUiState.Loaded(listOf(task(1, title, note))))
+        show(loaded(listOf(task(1, title, note))))
         val expected = context.getString(R.string.task_item_description, title, note)
         composeRule.onNodeWithTag(TaskListTags.ITEM).assert(
             SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(expected)),
@@ -186,16 +199,17 @@ class TaskListScreenTest {
 
     @Test
     fun `an entry without a note reads only the title`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "Nur Titel"))))
+        show(loaded(listOf(task(1, "Nur Titel"))))
         composeRule.onNodeWithTag(TaskListTags.ITEM).assert(
             SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Nur Titel")),
         )
     }
 
     @Test
-    fun `entries are not clickable`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "A", "B"))))
-        composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
+    fun `the text of an entry is not clickable, the check box is the only click target`() {
+        show(loaded(listOf(task(1, "A", "B"))))
+        composeRule.onNodeWithTag(TaskListTags.ITEM).assert(!SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        composeRule.onAllNodes(hasClickAction()).assertCountEquals(1)
     }
 
     // --- languages ---
@@ -203,7 +217,7 @@ class TaskListScreenTest {
     @Test
     @Config(qualifiers = "de")
     fun `german shows the german texts`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         val german = context.getString(R.string.task_list_empty_title)
         assertNotEquals(englishContext().getString(R.string.task_list_empty_title), german)
         composeRule.onNodeWithText(german).assertIsDisplayed()
@@ -212,14 +226,14 @@ class TaskListScreenTest {
     @Test
     @Config(qualifiers = "en")
     fun `english shows the english texts`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithText(englishContext().getString(R.string.task_list_empty_title)).assertIsDisplayed()
     }
 
     @Test
     @Config(qualifiers = "fr")
     fun `a language without translation falls back to english`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithText(englishContext().getString(R.string.task_list_empty_title)).assertIsDisplayed()
     }
 
@@ -230,7 +244,7 @@ class TaskListScreenTest {
     @Test
     fun `a 200 character title is shown completely, wrapped, and not ellipsized`() {
         assertEquals(200, longTitle.length)
-        show(TaskListUiState.Loaded(listOf(task(1, longTitle))))
+        show(loaded(listOf(task(1, longTitle))))
         val node = unmerged(TaskListTags.ITEM_TITLE).fetchSemanticsNodes().single()
         assertEquals(longTitle, node.config[SemanticsProperties.Text].joinToString(""))
         val layout = textLayout(node)
@@ -241,7 +255,7 @@ class TaskListScreenTest {
     @Test
     fun `a 2000 character note shows at most three lines ending in an ellipsis`() {
         val note = "Notiz ".repeat(400).trim().take(2000)
-        show(TaskListUiState.Loaded(listOf(task(1, "Titel", note))))
+        show(loaded(listOf(task(1, "Titel", note))))
         val layout = textLayout(unmerged(TaskListTags.ITEM_NOTE).fetchSemanticsNodes().single())
         assertEquals(3, layout.lineCount)
         assertTrue(layout.isLineEllipsized(2))
@@ -249,7 +263,7 @@ class TaskListScreenTest {
 
     @Test
     fun `a short note is not ellipsized`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "Titel", "kurz"))))
+        show(loaded(listOf(task(1, "Titel", "kurz"))))
         val layout = textLayout(unmerged(TaskListTags.ITEM_NOTE).fetchSemanticsNodes().single())
         assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
     }
@@ -258,7 +272,7 @@ class TaskListScreenTest {
     fun `a title and note of 200 and 2000 characters without spaces stay inside the width and need no horizontal scrolling`() {
         val title = "W".repeat(200)
         val note = "M".repeat(2000)
-        show(TaskListUiState.Loaded(listOf(task(1, title, note))))
+        show(loaded(listOf(task(1, title, note))))
         val root = composeRule.onNodeWithTag(TaskListTags.LIST).fetchSemanticsNode().boundsInRoot
         for (node in composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()) {
             assertTrue(node.boundsInRoot.left >= root.left && node.boundsInRoot.right <= root.right)
@@ -275,7 +289,7 @@ class TaskListScreenTest {
     @Test
     fun `hebrew, emoji, umlauts and line breaks in the note appear unchanged`() {
         val note = "שלום עולם\nÄpfel Öl Übung ß 😀👍🏽\n\nzweiter Absatz"
-        show(TaskListUiState.Loaded(listOf(task(1, "Titel", note))))
+        show(loaded(listOf(task(1, "Titel", note))))
         val node = unmerged(TaskListTags.ITEM_NOTE).fetchSemanticsNodes().single()
         assertEquals(note, node.config[SemanticsProperties.Text].joinToString(""))
     }
@@ -285,7 +299,7 @@ class TaskListScreenTest {
         val note = "שלום עולם\nHello world\n123"
         composeRule.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                AppTheme { TaskListScreen(TaskListUiState.Loaded(listOf(task(1, "Titel", note))), rememberLazyListState()) }
+                AppTheme { TaskListScreen(loaded(listOf(task(1, "Titel", note))), rememberLazyListState(), onStatusChange) }
             }
         }
         val layout = textLayout(unmerged(TaskListTags.ITEM_NOTE).fetchSemanticsNodes().single())
@@ -296,8 +310,8 @@ class TaskListScreenTest {
     }
 
     @Test
-    fun `done tasks look like open tasks`() {
-        show(TaskListUiState.Loaded(listOf(task(2, "Fertig", "Notiz", TaskStatus.DONE), task(1, "Offen", "Notiz"))))
+    fun `a done entry is as high as an open one with the same content`() {
+        show(loaded(listOf(task(2, "Fertig", "Notiz", TaskStatus.DONE), task(1, "Offen", "Notiz"))))
         val nodes = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()
         assertEquals(2, nodes.size)
         assertEquals(nodes[0].size.height, nodes[1].size.height)
@@ -310,13 +324,13 @@ class TaskListScreenTest {
 
     @Test
     fun `the bar title is a heading`() {
-        composeRule.setContent { AppTheme { MainScreen(TaskListUiState.Loaded(emptyList())) } }
+        composeRule.setContent { AppTheme { MainScreen(loaded(emptyList())) } }
         composeRule.onNodeWithText(context.getString(R.string.app_name)).assert(isHeading())
     }
 
     @Test
     fun `the title of the empty state is a heading`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithText(context.getString(R.string.task_list_empty_title)).assert(isHeading())
     }
 
@@ -335,7 +349,7 @@ class TaskListScreenTest {
 
     @Test
     fun `the sign of the empty state is hidden from TalkBack`() {
-        show(TaskListUiState.Loaded(emptyList()))
+        show(loaded(emptyList()))
         composeRule.onNodeWithTag(TaskListTags.EMPTY).assertIsDisplayed()
         assertNoDescriptionInUnmergedTree()
     }
@@ -352,7 +366,7 @@ class TaskListScreenTest {
         composeRule.setContent {
             AppTheme {
                 expected = pick(MaterialTheme.colorScheme)
-                TaskListScreen(state, rememberLazyListState())
+                TaskListScreen(state, rememberLazyListState(), onStatusChange)
             }
         }
         val image = composeRule.onNodeWithTag(TaskListTags.SIGN).captureToImage()
@@ -364,7 +378,7 @@ class TaskListScreenTest {
 
     @Test
     fun `the sign of the empty state is drawn in the colour of the theme`() {
-        val (matching, total) = countPixelsOfThemeColor(TaskListUiState.Loaded(emptyList())) { it.onSurfaceVariant }
+        val (matching, total) = countPixelsOfThemeColor(loaded(emptyList())) { it.onSurfaceVariant }
         assertTrue("only $matching of $total pixels have the theme colour", matching * 100 >= total * 5)
     }
 
@@ -376,7 +390,7 @@ class TaskListScreenTest {
 
     @Test
     fun `an entry with a short title is at least 56 dp high`() {
-        show(TaskListUiState.Loaded(listOf(task(1, "A"))))
+        show(loaded(listOf(task(1, "A"))))
         val minimum = with(composeRule.density) { 56.dp.roundToPx() }
         val height = composeRule.onNodeWithTag(TaskListTags.ITEM).fetchSemanticsNode().size.height
         assertTrue("height $height below $minimum", height >= minimum)
@@ -385,7 +399,7 @@ class TaskListScreenTest {
     @Test
     fun `the last entry ends at least 96 dp above the bottom of the list`() {
         val tasks = (30L downTo 1L).map { task(it, "Aufgabe $it") }
-        show(TaskListUiState.Loaded(tasks))
+        show(loaded(tasks))
         composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(tasks.lastIndex)
         composeRule.waitForIdle()
         val list = composeRule.onNodeWithTag(TaskListTags.LIST).fetchSemanticsNode().boundsInRoot
@@ -402,7 +416,7 @@ class TaskListScreenTest {
         lateinit var listState: androidx.compose.foundation.lazy.LazyListState
         composeRule.setContent {
             listState = rememberLazyListState()
-            AppTheme { TaskListScreen(TaskListUiState.Loaded(tasks), listState) }
+            AppTheme { TaskListScreen(loaded(tasks), listState, onStatusChange) }
         }
         composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(8)
         composeRule.waitForIdle()
@@ -419,7 +433,7 @@ class TaskListScreenTest {
     @Test
     fun `the scroll position survives restoration even though the list is loaded after the restore`() {
         val tasks = (1L..100L).reversed().map { task(it, "Aufgabe $it") }
-        var uiState: TaskListUiState by mutableStateOf(TaskListUiState.Loaded(tasks))
+        var uiState: TaskListUiState by mutableStateOf(loaded(tasks))
         val restoration = StateRestorationTester(composeRule)
         restoration.setContent { AppTheme { MainScreen(uiState) } }
 
@@ -432,8 +446,114 @@ class TaskListScreenTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag(TaskListTags.LIST).assertCountEquals(0)
 
-        uiState = TaskListUiState.Loaded(tasks)
+        uiState = loaded(tasks)
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Aufgabe ${tasks[50].id.value}").assertIsDisplayed()
+    }
+
+    // --- check box and done group (S6) ---
+
+    private fun checkboxes() = composeRule.onAllNodesWithTag(TaskListTags.ITEM_CHECKBOX)
+
+    @Test
+    fun `the check box tells which task and whether it is open or done, as a check box`() {
+        show(loaded(listOf(task(2, "Fertig", status = TaskStatus.DONE), task(1, "Offen"))))
+        val nodes = checkboxes().fetchSemanticsNodes()
+        assertEquals(2, nodes.size)
+        val open = nodes.single { it.config[SemanticsProperties.ContentDescription] == listOf(context.getString(R.string.task_status_of, "Offen")) }
+        val done = nodes.single { it.config[SemanticsProperties.ContentDescription] == listOf(context.getString(R.string.task_status_of, "Fertig")) }
+        assertEquals(context.getString(R.string.task_status_open), open.config[SemanticsProperties.StateDescription])
+        assertEquals(context.getString(R.string.task_status_done), done.config[SemanticsProperties.StateDescription])
+        assertEquals(Role.Checkbox, open.config[SemanticsProperties.Role])
+        assertEquals(ToggleableState.Off, open.config[SemanticsProperties.ToggleableState])
+        assertEquals(ToggleableState.On, done.config[SemanticsProperties.ToggleableState])
+    }
+
+    @Test
+    fun `an entry has two focus targets, the check box and the merged text, done adds the state to the text`() {
+        show(loaded(listOf(task(2, "Fertig", "Notiz", TaskStatus.DONE), task(1, "Offen", "Notiz"))))
+        checkboxes().assertCountEquals(2)
+        val texts = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()
+        assertEquals(2, texts.size)
+        val done = texts[0].config
+        val open = texts[1].config
+        assertEquals(listOf(context.getString(R.string.task_item_description, "Fertig", "Notiz")), done[SemanticsProperties.ContentDescription])
+        assertEquals(context.getString(R.string.task_status_done), done[SemanticsProperties.StateDescription])
+        assertEquals(listOf(context.getString(R.string.task_item_description, "Offen", "Notiz")), open[SemanticsProperties.ContentDescription])
+        assertFalse(open.contains(SemanticsProperties.StateDescription))
+    }
+
+    @Test
+    fun `tapping the check box asks for the opposite status`() {
+        val calls = mutableListOf<Pair<TaskId, TaskStatus>>()
+        onStatusChange = { id, status -> calls += id to status }
+        show(loaded(listOf(task(2, "Fertig", status = TaskStatus.DONE), task(1, "Offen"))))
+        checkboxes()[1].performClick()
+        checkboxes()[0].performClick()
+        assertEquals(listOf(TaskId(1) to TaskStatus.DONE, TaskId(2) to TaskStatus.OPEN), calls)
+    }
+
+    @Test
+    fun `tapping the text of an entry changes nothing`() {
+        val calls = mutableListOf<Pair<TaskId, TaskStatus>>()
+        onStatusChange = { id, status -> calls += id to status }
+        show(loaded(listOf(task(1, "Offen", "Notiz"))))
+        unmerged(TaskListTags.ITEM_TITLE)[0].performClick()
+        unmerged(TaskListTags.ITEM_NOTE)[0].performClick()
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun `only done tasks show the list with the heading on top and no empty state`() {
+        show(loaded(listOf(task(2, "Zwei", status = TaskStatus.DONE), task(1, "Eins", status = TaskStatus.DONE))))
+        composeRule.onAllNodesWithTag(TaskListTags.EMPTY).assertCountEquals(0)
+        val heading = composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).fetchSemanticsNode()
+        val firstEntry = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes().minOf { it.boundsInRoot.top }
+        assertTrue(heading.boundsInRoot.bottom <= firstEntry)
+    }
+
+    @Test
+    fun `the done heading stands between open and done entries`() {
+        show(loaded(listOf(task(3, "Offen"), task(2, "Fertig", status = TaskStatus.DONE))))
+        val heading = composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).fetchSemanticsNode().boundsInRoot
+        val entries = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
+        assertTrue(entries[0].boundsInRoot.bottom <= heading.top)
+        assertTrue(heading.bottom <= entries[1].boundsInRoot.top)
+    }
+
+    @Test
+    fun `without done tasks there is no done heading`() {
+        show(loaded(listOf(task(1, "Offen"))))
+        composeRule.onAllNodesWithTag(TaskListTags.DONE_HEADING).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the done heading is a heading with the heading text and cannot be tapped`() {
+        show(loaded(listOf(task(1, "Fertig", status = TaskStatus.DONE))))
+        composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).assert(isHeading())
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        composeRule.onNodeWithText(context.getString(R.string.task_list_done_heading)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `with a long title and 200 percent text the check box stays reachable, at least 48 dp, left of the title`() {
+        val calls = mutableListOf<TaskId>()
+        onStatusChange = { id, _ -> calls += id }
+        show200Percent(loaded(listOf(task(1, longTitle))))
+        val box = checkboxes()[0]
+        box.assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val boxBounds = box.fetchSemanticsNode().boundsInRoot
+        val title = unmerged(TaskListTags.ITEM_TITLE).fetchSemanticsNodes().single().boundsInRoot
+        assertTrue(boxBounds.right <= title.left)
+        checkboxes()[0].performClick()
+        assertEquals(listOf(TaskId(1)), calls)
+    }
+
+    private fun show200Percent(state: TaskListUiState) {
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.FontScale(2f)) {
+                AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange) }
+            }
+        }
     }
 }
