@@ -8,10 +8,12 @@ wf=.github/workflows/ci.yml
 expect_green "unchanged workflow" "$check" "$wf"
 variant() { cp "$wf" "$1"; echo "$1"; }
 
-f="$(variant needs.yml)"; replace "$f" "needs: [build, counterprobes, emulator, screenshots, secrets, vulnerabilities]" "needs: [build, counterprobes, screenshots, secrets, vulnerabilities]"
+f="$(variant needs.yml)"; replace "$f" "needs: [build, counterprobes, emulator, emulator-read-failure, screenshots, secrets, vulnerabilities]" "needs: [build, counterprobes, emulator-read-failure, screenshots, secrets, vulnerabilities]"
 expect_red "(i) job missing in needs" "does not need: emulator" "$check" "$f"
-f="$(variant needs-screenshots.yml)"; replace "$f" "needs: [build, counterprobes, emulator, screenshots, secrets, vulnerabilities]" "needs: [build, counterprobes, emulator, secrets, vulnerabilities]"
+f="$(variant needs-screenshots.yml)"; replace "$f" "needs: [build, counterprobes, emulator, emulator-read-failure, screenshots, secrets, vulnerabilities]" "needs: [build, counterprobes, emulator, emulator-read-failure, secrets, vulnerabilities]"
 expect_red "(i') screenshot job missing in needs" "does not need: screenshots" "$check" "$f"
+f="$(variant needs-read-failure.yml)"; replace "$f" "needs: [build, counterprobes, emulator, emulator-read-failure, screenshots, secrets, vulnerabilities]" "needs: [build, counterprobes, emulator, screenshots, secrets, vulnerabilities]"
+expect_red "(i'') read failure job missing in needs" "does not need: emulator-read-failure" "$check" "$f"
 f="$(variant retention.yml)"; replace "$f" "retention-days: 30" "retention-days: 7"
 expect_red "(ii) retention 7 days" "retention-days must be >= 14" "$check" "$f"
 f="$(variant secret.yml)"; replace "$f" "      HEAD_SHA:" "      PROBE: \${{ secrets.X }}

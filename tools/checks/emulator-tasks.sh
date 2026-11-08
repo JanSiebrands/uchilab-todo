@@ -7,8 +7,7 @@
 # <seed-dir> holds tasks.db, titles.txt (expected titles in list order) and done.txt (title of the done task).
 # Needs `adb root` (emulator only). With SCREENSHOTS=<dir>, screenshots of the list, the input and its hints
 # and the discard dialog are written there (invented data only).
-# Only ever targets one emulator (ANDROID_SERIAL=emulator-*), never another attached device.
-# Every wait has a timeout and a clear message; the exit code decides.
+# Device helpers (one emulator only, every wait with a timeout) come from emulator-lib.sh; the exit code decides.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 apk="$1"
@@ -18,24 +17,9 @@ app_dir="/data/data/$package"
 name="$(basename "$apk" .apk)"
 tmp="$(mktemp -d)"
 
-# On failure the last UI dump goes next to the logcat (EMULATOR_LOGS, set by emulator-run.sh) for the reviewers.
-fail() {
-  echo "emulator-tasks [$name]: FAILED: $*" >&2
-  if [ -n "${EMULATOR_LOGS:-}" ] && [ -s "$tmp/window.xml" ]; then
-    mkdir -p "$EMULATOR_LOGS" && cp "$tmp/window.xml" "$EMULATOR_LOGS/$name-last-window.xml" || true
-  fi
-  exit 1
-}
-log() { echo "emulator-tasks [$name]: $*"; }
-
-# Target: exactly one emulator. An explicitly set ANDROID_SERIAL must be an emulator.
-if [ -n "${ANDROID_SERIAL:-}" ]; then
-  case "$ANDROID_SERIAL" in emulator-*) ;; *) fail "ANDROID_SERIAL=$ANDROID_SERIAL is not an emulator" ;; esac
-else
-  emulators="$(adb devices | tr -d '\r' | awk '$1 ~ /^emulator-/ && $2 == "device" {print $1}')"
-  [ "$(printf '%s' "$emulators" | grep -c .)" -eq 1 ] || fail "need exactly one running emulator, found: ${emulators:-none}"
-  export ANDROID_SERIAL="$emulators"
-fi
+check=emulator-tasks
+source "$here/emulator-lib.sh"
+select_emulator
 
 cleanup() { timeout 60 adb uninstall "$package" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
 trap cleanup EXIT
@@ -60,41 +44,6 @@ draft_title="Draft-$run_id"
 # Expected list, top to bottom; grows by the UI task once it is created.
 expected="$tmp/expected.txt"
 cp "$seed/titles.txt" "$expected"
-
-# wait_until <seconds> <description> <command...>: polls every 2 s, fails with the description on timeout.
-wait_until() {
-  local seconds="$1" what="$2"; shift 2
-  local end=$((SECONDS + seconds))
-  until "$@" >/dev/null 2>&1; do
-    [ "$SECONDS" -lt "$end" ] || fail "timeout after ${seconds}s: $what"
-    sleep 2
-  done
-}
-
-booted() { [ "$(timeout 10 adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; }
-is_root() { [ "$(timeout 10 adb shell id -u | tr -d '\r')" = "0" ]; }
-pm_ready() { timeout 10 adb shell pm path android | grep -q '^package:'; }
-
-become_root() {
-  timeout 60 adb root >/dev/null 2>&1 || true
-  timeout 60 adb wait-for-device
-  wait_until 60 "adb root (is root available on this system image?)" is_root
-}
-
-wait_for_boot() {
-  timeout 300 adb wait-for-device || fail "device did not come back within 300s"
-  wait_until 300 "sys.boot_completed" booted
-  wait_until 120 "package manager ready" pm_ready
-  # The keyguard would hide the app after a reboot; this image has no lock credential.
-  timeout 10 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
-  timeout 10 adb shell input keyevent 82 >/dev/null 2>&1 || true
-}
-
-# dump_ui: current window hierarchy into $tmp/window.xml.
-dump_ui() {
-  timeout 30 adb shell uiautomator dump /data/local/tmp/window.xml >/dev/null 2>&1 || return 1
-  timeout 30 adb exec-out cat /data/local/tmp/window.xml >"$tmp/window.xml" 2>/dev/null || return 1
-}
 
 # Checks the dump against $expected: the done task (done.txt) is shown, all titles present (in text or
 # content-desc), tops strictly increasing, and the done task between its neighbours.
@@ -133,23 +82,6 @@ print("all titles in order: " + ", ".join(titles) + f"; done task {done} at inde
 PY
 }
 
-# node <tag>: prints "x y<TAB>text" for the node whose resource-id is the test tag (centre of its bounds),
-# from the last dump_ui; exit 1 if there is none.
-node() {
-  python3 -I - "$tmp/window.xml" "$1" <<'PY'
-import re, sys
-import xml.etree.ElementTree as ET
-for n in ET.parse(sys.argv[1]).getroot().iter("node"):
-    rid = n.get("resource-id", "")
-    if rid == sys.argv[2] or rid.endswith(":id/" + sys.argv[2]):
-        l, t, r, b = map(int, re.findall(r"-?\d+", n.get("bounds", "")))
-        print(f"{(l + r) // 2} {(t + b) // 2}\t{n.get('text', '')}")
-        sys.exit(0)
-sys.exit(1)
-PY
-}
-shown() { dump_ui && node "$1" >/dev/null; }
-gone() { dump_ui && ! node "$1" >/dev/null; }
 # field_has <tag> <text>: the field with this tag contains the text.
 field_has() { dump_ui && node "$1" | cut -f2- | grep -qF -- "$2"; }
 
@@ -194,48 +126,6 @@ discard() {
   wait_until 30 "$1: input still open after discarding" gone "$form_tag"
 }
 
-# shot <name>: screenshot for the feature PR (only with SCREENSHOTS set).
-shot() {
-  local file="$SCREENSHOTS/$name-$1.png"
-  mkdir -p "$SCREENSHOTS"
-  sleep 1
-  # Only on an image with rendering (screenshots job, target default): on aosp_atd both screencap and the
-  # emulator host give a single colour although the UI is there (runs 42435169228, 42436517057, UCH-65).
-  timeout 30 adb exec-out screencap -p >"$file" || fail "screenshot $1 failed"
-  [ -s "$file" ] || fail "screenshot $1 empty"
-  # A display that is off gives a black frame of the right size; only a picture with content counts.
-  python3 -I "$here/png-not-blank.py" "$file" || fail "screenshot $1 blank ($(display_state))"
-}
-
-# display_state: power and display state in one line, for the log.
-display_state() {
-  timeout 10 adb shell "dumpsys power | grep -E 'mWakefulness=|mStayOn='; dumpsys display | grep -E 'mScreenState='" \
-    2>/dev/null | tr -d '\r' | tr -s ' \n' ' ' || true
-}
-
-# wait_process_gone: waits up to 30 s until pidof answers "no such process" (exit 1). A hanging adb (timeout,
-# exit 124) or any other error does not count as "process ended" and aborts with a clear message.
-wait_process_gone() {
-  local end=$((SECONDS + 30)) status
-  while :; do
-    status=0
-    timeout 10 adb shell pidof "$package" >/dev/null 2>&1 || status=$?
-    case "$status" in
-      1) return 0 ;;
-      0) [ "$SECONDS" -lt "$end" ] || fail "timeout after 30s: process still running after it was stopped"; sleep 2 ;;
-      124) fail "adb shell pidof did not answer within 10s (adb hangs), process end unknown" ;;
-      *) fail "adb shell pidof failed with exit $status, process end unknown" ;;
-    esac
-  done
-}
-
-crashed() { timeout 30 adb logcat -b crash -d | tr -d '\r' | grep -F "$package"; }
-
-start_app() {
-  timeout 30 adb logcat -b crash -c || true
-  timeout 60 adb shell am start -W -n "$component" >/dev/null || fail "$1: am start failed"
-}
-
 # wait_list <step>: waits until the list shows the expected titles in order; no crash.
 wait_list() {
   local step="$1" end
@@ -255,19 +145,8 @@ wait_list() {
 # check_list <step>: starts the app and checks the list.
 check_list() { start_app "$1"; wait_list "$1"; }
 
-# install_seed: the seed in place of the app's database (app stopped): same owner as the data directory,
-# restorecon, no -wal/-shm left over.
-install_seed() {
-  local owner
-  owner="$(timeout 10 adb shell stat -c %u:%g "$app_dir" | tr -d '\r')"
-  [ -n "$owner" ] || fail "owner of $app_dir unknown"
-  timeout 60 adb push "$seed/tasks.db" /data/local/tmp/seed-tasks.db >/dev/null
-  timeout 30 adb shell "mkdir -p $app_dir/databases && rm -f $app_dir/databases/tasks.db*"
-  timeout 30 adb shell "cp /data/local/tmp/seed-tasks.db $app_dir/databases/tasks.db"
-  timeout 30 adb shell "chown $owner $app_dir/databases $app_dir/databases/tasks.db && chmod 600 $app_dir/databases/tasks.db"
-  timeout 30 adb shell "restorecon -R $app_dir/databases && rm -f /data/local/tmp/seed-tasks.db"
-  log "seed installed (owner $owner)"
-}
+# install_seed: the seed in place of the app's database (app stopped), see install_db.
+install_seed() { install_db "$seed/tasks.db"; }
 
 wait_for_boot
 become_root
@@ -277,16 +156,7 @@ if [ -n "$ime_list" ]; then
 else
   log "no keyboard app on this image (ime list -s is empty): keyboard not checked on the emulator"
 fi
-apk="$(source "$here/apk-sign.sh" && sign_if_unsigned "$apk" "$tmp")"
-timeout 60 adb uninstall "$package" >/dev/null 2>&1 || true
-timeout 120 adb install "$apk" >/dev/null || fail "install failed"
-component="$(timeout 30 adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN \
-  -c android.intent.category.LAUNCHER "$package" | tr -d '\r' | tail -n 1)"
-case "$component" in "$package"/*) ;; *) fail "no launcher activity found (got: $component)" ;; esac
-
-# First start creates the data directory with the app's owner and SELinux label; then stop the app.
-timeout 60 adb shell am start -W -n "$component" >/dev/null || fail "first start failed"
-timeout 30 adb shell am force-stop "$package"
+install_app
 install_seed
 
 check_list "after start"
@@ -301,10 +171,7 @@ wait_list "after create"
 
 # Screenshots for the feature PR: list, empty input, title missing, title too long, discard dialog.
 if [ -n "${SCREENSHOTS:-}" ]; then
-  # The display may have gone off since the start (no input for a while); screencap then sees black.
-  timeout 10 adb shell svc power stayon true || fail "screenshots: svc power stayon failed"
-  timeout 10 adb shell input keyevent KEYCODE_WAKEUP || fail "screenshots: wakeup failed"
-  log "screenshots: display $(display_state)"
+  screen_on
   shot 1-list
   open_new_task "screenshots"
   shot 2-input-empty

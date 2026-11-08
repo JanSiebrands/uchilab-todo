@@ -7,7 +7,7 @@
 # - every expected artifact (table below) is uploaded exactly once by its job, after the collecting step,
 #   with if: always(), the expected path, name <prefix>-${{ env.REVIEW_SHA }}, retention-days 14 and
 #   if-no-files-found: error, without continue-on-error,
-# - tools/checks/emulator-run.sh writes the logs the emulator job uploads.
+# - tools/checks/emulator-run.sh and emulator-read-failure-run.sh write the logs their emulator jobs upload.
 set -euo pipefail
 wf="${1:-.github/workflows/ci.yml}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -23,6 +23,7 @@ expected=(
   'build|debug-apk|${{ runner.temp }}/review/apk'
   'build|r8-mapping|${{ runner.temp }}/review/r8'
   'emulator|emulator-logs|app/build/emulator-artifacts'
+  'emulator-read-failure|read-failure-logs|app/build/emulator-artifacts'
   'screenshots|screenshots|app/build/emulator-artifacts'
 )
 
@@ -63,6 +64,8 @@ done
 
 grep -qF 'logs="$here/../../app/build/emulator-artifacts"' "$root/tools/checks/emulator-run.sh" \
   || fail "tools/checks/emulator-run.sh does not write its logs to app/build/emulator-artifacts"
+grep -qF 'logs="$here/../../app/build/emulator-artifacts"' "$root/tools/checks/emulator-read-failure-run.sh" \
+  || fail "tools/checks/emulator-read-failure-run.sh does not write its logs to app/build/emulator-artifacts"
 
 [ "$errors" -eq 0 ] || exit 1
 echo "review-artifacts-check: OK ($wf)"
