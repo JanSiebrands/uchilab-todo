@@ -61,43 +61,60 @@ wait_for_boot() {
 # (run 42502889583, both attempts: "device did not come back", then "could not connect to TCP port 5554").
 # Instead the emulator is stopped (sync, adb emu kill) and started again with the same AVD, port and options
 # as android-emulator-runner (EMULATOR_AVD, EMULATOR_OPTIONS from the job). A cold boot of the same AVD keeps
-# /data, so persist.* properties take effect as after a reboot. Up to 3 starts, each with a time limit; if the
-# emulator does not come back, it fails with a clear message, never skips. Output of each start goes to
-# $EMULATOR_LOGS/emulator-restart-<n>.log for the reviewers.
+# /data, so persist.* properties take effect as after a reboot. Up to EMULATOR_RESTARTS starts (default 3),
+# each with a time limit of EMULATOR_BOOT_TIMEOUT seconds (default 420); a start whose process ends early or
+# that does not boot in time is stopped and retried. Only the start is retried, never a check. If the emulator
+# does not come back, it fails with the number of starts actually made and the reason of the last one, never
+# skips. Output of each start goes to $EMULATOR_LOGS/emulator-restart-<call>-<start>.log for the reviewers.
+# Counterprobes: 16x (process ends, real emulator binary), 16y (second start succeeds), 16z (time limit).
 emulator_port() { echo "${ANDROID_SERIAL#emulator-}"; }
 console_closed() { ! (exec 3<>"/dev/tcp/127.0.0.1/$(emulator_port)") 2>/dev/null; }
 # boot_within <seconds> <pid>: 0 when booted and the package manager answers in time; 1 on timeout or when the
-# emulator process <pid> has ended.
+# emulator process <pid> has ended. The reason of a failure is left in boot_failure.
 boot_within() {
   local end=$((SECONDS + $1)) pid="$2"
+  boot_failure=""
   until booted && pm_ready; do
-    kill -0 "$pid" 2>/dev/null || { log "emulator process $pid has ended"; return 1; }
-    [ "$SECONDS" -lt "$end" ] || { log "no boot within $1 s"; return 1; }
+    kill -0 "$pid" 2>/dev/null || { boot_failure="emulator process ended"; log "$boot_failure (pid $pid)"; return 1; }
+    [ "$SECONDS" -lt "$end" ] || { boot_failure="no boot within $1 s"; log "$boot_failure"; return 1; }
     sleep 2
   done
 }
+# stop_pid <pid>: ends a start that failed, so the next start does not share the port with it.
+stop_pid() {
+  local i
+  kill "$1" 2>/dev/null || return 0
+  for i in $(seq 1 15); do kill -0 "$1" 2>/dev/null || return 0; sleep 2; done
+  kill -9 "$1" 2>/dev/null || true
+}
+restart_call=0
 restart_emulator() {
   local bin="${ANDROID_HOME:?ANDROID_HOME is not set}/emulator/emulator" avd="${EMULATOR_AVD:?EMULATOR_AVD is not set}"
-  local opts="${EMULATOR_OPTIONS:?EMULATOR_OPTIONS is not set}" attempts="${EMULATOR_RESTARTS:-3}" attempt pid out
+  local opts="${EMULATOR_OPTIONS:?EMULATOR_OPTIONS is not set}" attempts="${EMULATOR_RESTARTS:-3}"
+  local limit="${EMULATOR_BOOT_TIMEOUT:-420}" attempt tried=0 pid out started
   local -a args
   read -r -a args <<<"$opts"
+  restart_call=$((restart_call + 1))
   timeout 30 adb shell sync >/dev/null 2>&1 || true
   for attempt in $(seq 1 "$attempts"); do
     timeout 30 adb emu kill >/dev/null 2>&1 || true
     wait_until 120 "emulator on port $(emulator_port) did not stop" console_closed
-    out="${EMULATOR_LOGS:-$tmp}/emulator-restart-$attempt.log"
+    out="${EMULATOR_LOGS:-$tmp}/emulator-restart-$restart_call-$attempt.log"
     mkdir -p "$(dirname "$out")"
+    started=$SECONDS
     "$bin" -port "$(emulator_port)" -avd "$avd" "${args[@]}" >"$out" 2>&1 </dev/null &
     pid=$!
+    tried=$attempt
     log "emulator restart $attempt/$attempts (pid $pid, log $(basename "$out"))"
-    if boot_within 420 "$pid"; then
+    if boot_within "$limit" "$pid"; then
       timeout 10 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
       timeout 10 adb shell input keyevent 82 >/dev/null 2>&1 || true
-      log "emulator back after restart $attempt/$attempts ($SECONDS s)"
+      log "emulator back after restart $attempt/$attempts (boot took $((SECONDS - started)) s)"
       return 0
     fi
+    stop_pid "$pid"
   done
-  fail "emulator did not come back after $attempts restarts (logs emulator-restart-*.log)"
+  fail "emulator did not come back after $tried restarts (last: $boot_failure; logs emulator-restart-$restart_call-*.log)"
 }
 
 # dump_ui: current window hierarchy into $tmp/window.xml.
