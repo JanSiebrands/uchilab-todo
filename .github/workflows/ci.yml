@@ -233,8 +233,10 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # Official images, pinned by digest, no download from GitHub releases (plan UCH-125 section 3). Renovate's
-  # github-actions manager updates docker:// references in uses.
+  # Official images, pinned by tag and digest, no download from GitHub releases (plan UCH-125 section 3).
+  # Renovate's github-actions manager documents that it extracts docker:// references in uses (depType
+  # "docker"); that it also updates the digest there is not stated explicitly. Read at the first Renovate run
+  # on main: if no update PR for these images appears after a new release, update tag and digest by hand.
   secrets:
     name: Secret scan
     runs-on: ubuntu-26.04
