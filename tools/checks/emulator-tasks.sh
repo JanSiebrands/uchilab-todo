@@ -18,7 +18,14 @@ app_dir="/data/data/$package"
 name="$(basename "$apk" .apk)"
 tmp="$(mktemp -d)"
 
-fail() { echo "emulator-tasks [$name]: FAILED: $*" >&2; exit 1; }
+# On failure the last UI dump goes next to the logcat (EMULATOR_LOGS, set by emulator-run.sh) for the reviewers.
+fail() {
+  echo "emulator-tasks [$name]: FAILED: $*" >&2
+  if [ -n "${EMULATOR_LOGS:-}" ] && [ -s "$tmp/window.xml" ]; then
+    mkdir -p "$EMULATOR_LOGS" && cp "$tmp/window.xml" "$EMULATOR_LOGS/$name-last-window.xml" || true
+  fi
+  exit 1
+}
 log() { echo "emulator-tasks [$name]: $*"; }
 
 # Target: exactly one emulator. An explicitly set ANDROID_SERIAL must be an emulator.

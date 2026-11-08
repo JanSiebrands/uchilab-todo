@@ -12,6 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 logs="$here/../../app/build/emulator-artifacts"
 save_logcat() { mkdir -p "$logs"; timeout 60 adb logcat -d -b all >"$logs/logcat.txt" 2>&1 || true; }
 trap save_logcat EXIT
+export EMULATOR_LOGS="$logs"
 apks="$here/../../app/build/outputs/apk"
 seed="$here/../../app/build/emulator-seed"
 step() { echo "::group::$*"; timeout 600 "$@"; echo "::endgroup::"; }
