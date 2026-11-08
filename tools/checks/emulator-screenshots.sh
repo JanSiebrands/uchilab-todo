@@ -4,7 +4,8 @@
 # runs. Then the screenshots for the feature PR, all in the release build with R8: per device language (en,
 # de; persist.sys.locale and reboot, read back) and per mode (light, dark; cmd uimode night, read back)
 # emulator-showcase.sh (empty state, list, input states, 200 % font, landscape) and emulator-read-failure.sh
-# with SCREENSHOTS (all three cases, case A gives the read failure picture). Then counterprobe 16s and
+# with SCREENSHOTS (all three cases, case A gives the read failure picture). Then counterprobes 16s and 16w
+# (discard dialog opened by key must fail with "focused:"; 16u and 16v need no emulator, job counterprobes) and
 # screenshots-check.sh (exactly the 22 names of screenshots-expected.txt, schema, content, theme).
 # Only invented data. Each step is limited to 10 minutes; the exit code decides.
 set -euo pipefail
@@ -52,6 +53,8 @@ done
 
 log "step: 16s ($SECONDS s)"
 timeout 600 "$here/counterprobes/16s-wrong-state-emulator.sh" "$apk" "$build/showcase-seed"
+log "step: 16w ($SECONDS s)"
+timeout 600 "$here/counterprobes/16w-dialog-by-key-emulator.sh" "$apk" "$build/showcase-seed"
 log "step: screenshots-check.sh ($SECONDS s)"
 timeout 600 "$here/screenshots-check.sh" "$shots"
 rm -rf "$tmp"

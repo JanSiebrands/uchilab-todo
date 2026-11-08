@@ -8,7 +8,10 @@
 # Before each picture the state's test tag must be in the dump directly before and after screencap (shot in
 # emulator-lib.sh). The language is checked by comparing the text of new_task_action with the string resource
 # of that language (ui-node-text.py), the seed by showcase-seed-check.py and the list check below, "Save" at
-# 200 % font and in landscape by ui-node-visible.py. Every setting is read back and reset afterwards.
+# 200 % font and in landscape by ui-node-visible.py. The list check is ui-list-matches.py (counterprobe 16u, no
+# emulator). The discard dialog is opened by tapping close and its buttons must not be focused after the picture
+# (ui-node-unfocused.py; counterprobes 16v without and 16w with emulator). Every setting is read back and reset
+# afterwards.
 # Usage: SCREENSHOTS=<dir> emulator-showcase.sh <apk> <showcase-seed-dir>   (holds de/ and en/ of
 # ShowcaseSeedTest). Needs `adb root` (emulator only), invented data only; the exit code decides.
 set -euo pipefail
@@ -38,6 +41,8 @@ title_counter_tag="new_task_title_counter"
 save_tag="new_task_save"
 discard_dialog_tag="new_task_discard_dialog"
 discard_confirm_tag="new_task_discard_confirm"
+discard_keep_tag="new_task_discard_keep"
+close_tag="new_task_close"
 
 reset_display() {
   timeout 10 adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
@@ -83,6 +88,13 @@ setting system user_rotation 0
 setting system font_scale 1.0
 screen_on
 
+# keep_dump <state>: copy of the last UI dump next to the logs (EMULATOR_LOGS, artifact screenshots-<sha>), so
+# reviewers and fixtures of the counterprobes can use the real dump of this state.
+keep_dump() {
+  [ -n "${EMULATOR_LOGS:-}" ] || return 0
+  mkdir -p "$EMULATOR_LOGS" && cp "$tmp/window.xml" "$EMULATOR_LOGS/$check-$name-$1-window.xml" || true
+}
+
 # language_matches <step>: new_task_action shows the value of the resource of this language.
 language_matches() {
   dump_ui || fail "$1: UI dump failed"
@@ -94,41 +106,7 @@ language_matches() {
 # entry and no entry without a note in the seed shows a note line (one with, one without, plan section 4).
 list_matches() {
   dump_ui || return 1
-  python3 -I - "$tmp/window.xml" "$seed/tasks.json" "$item_tag" >"$tmp/match.txt" 2>&1 <<'PY'
-import json, re, sys
-import xml.etree.ElementTree as ET
-root = ET.parse(sys.argv[1]).getroot()
-tasks = json.load(open(sys.argv[2], encoding="utf-8"))
-items = []
-for n in root.iter("node"):
-    rid = n.get("resource-id", "")
-    if rid == sys.argv[3] or rid.endswith(":id/" + sys.argv[3]):
-        text = "\n".join(x for d in n.iter("node") for x in (d.get("text", ""), d.get("content-desc", "")) if x)
-        top = int(re.findall(r"-?\d+", n.get("bounds", ""))[1])
-        items.append((text, top))
-tops = []
-for t in tasks:
-    hits = [(text, top) for text, top in items if t["title"] in text]
-    if not hits:
-        print(f"missing: {t['title']}")
-        sys.exit(1)
-    text, top = hits[0]
-    tops.append(top)
-    lines = [l for l in (t["note"] or "").splitlines() if l]
-    if lines and lines[0] not in text:
-        print(f"note not shown: {t['title']}")
-        sys.exit(1)
-others = [l for o in tasks for l in (o["note"] or "").splitlines() if l]
-for t, (text, _) in ((t, [h for h in items if t["title"] in h[0]][0]) for t in tasks if not t["note"]):
-    if any(l in text for l in others):
-        print(f"note shown for a task without a note: {t['title']}")
-        sys.exit(1)
-if any(a >= b for a, b in zip(tops, tops[1:])):
-    print("wrong order: " + ", ".join(f"{t['title']}@{y}" for t, y in zip(tasks, tops)))
-    sys.exit(1)
-with_note = sum(1 for t in tasks if t["note"])
-print(f"all {len(tasks)} titles in order, {with_note} with note shown, {len(tasks) - with_note} without")
-PY
+  python3 -I "$here/ui-list-matches.py" "$tmp/window.xml" "$seed/tasks.json" "$item_tag" >"$tmp/match.txt" 2>&1
 }
 
 # tap <step> <tag>: waits up to 30 s for the node and taps the centre of its bounds.
@@ -180,6 +158,7 @@ install_db "$seed/tasks.db"
 start_app "list"
 wait_until 90 "list: readable seed not shown as expected ($(cat "$tmp/match.txt" 2>/dev/null))" list_matches
 log "list: $(cat "$tmp/match.txt")"
+keep_dump list
 language_matches "list"
 shot list "$list_tag"
 
@@ -194,12 +173,25 @@ if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   wait_until 30 "input: no counter for a too long title" shown "$title_counter_tag"
   wait_until 30 "input: no hint for a too long title" shown "$title_hint_tag"
   shot input-title-too-long "$title_counter_tag"
+  # The dialog for the picture is opened by touch (close button), as with a finger: a key event (input text,
+  # KEYCODE_BACK) leaves touch mode and Compose then shows a focus frame on a dialog button (plan UCH-99
+  # section 2; counterprobe 16w opens it by key and must turn red here).
+  tap "input" "$close_tag"
+  wait_until 30 "input: no discard dialog after tapping close" shown "$discard_dialog_tag"
+  shot input-discard-dialog "$discard_dialog_tag"
+  dump_ui || fail "input: UI dump failed"
+  keep_dump discard-dialog
+  python3 -I "$here/ui-node-unfocused.py" "$tmp/window.xml" "$discard_keep_tag" "$discard_confirm_tag" \
+    || fail "input: discard dialog button focused or missing after the picture"
+  # Back opens the same dialog (check of UCH-81, kept): first back to the form with "Keep".
+  tap "input" "$discard_keep_tag"
+  wait_until 30 "input: discard dialog still open after Keep" gone "$discard_dialog_tag"
+  wait_until 30 "input: form not shown after Keep" shown "$form_tag"
   tries=0
   until timeout 10 adb shell input keyevent KEYCODE_BACK && sleep 1 && shown "$discard_dialog_tag"; do
     tries=$((tries + 1))
     [ "$tries" -lt 3 ] || fail "input: no discard dialog after Back"
   done
-  shot input-discard-dialog "$discard_dialog_tag"
   tap "input" "$discard_confirm_tag"
   wait_until 30 "input: input still open after discarding" gone "$form_tag"
 fi
