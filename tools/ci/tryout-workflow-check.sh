@@ -26,7 +26,8 @@ if grep -nE 'secrets[.[]' "$wf" >&2; then fail "secrets are used in the workflow
 
 [ "$(q ".jobs.\"$job\".if")" = "github.event_name == 'pull_request'" ] \
   || fail "$job must have if: github.event_name == 'pull_request'"
-missing="$(yq -r ".jobs.\"$job\".needs as \$n | .jobs | keys | .[] | select(. != \"$job\") | select(. as \$k | (\$n // []) | contains([\$k]) | not)" "$wf")"
+# Exact names: contains() would match substrings ("emulator" inside "emulator-read-failure").
+missing="$(yq -r ".jobs.\"$job\".needs as \$n | .jobs | keys | .[] | select(. != \"$job\") | select(. as \$k | (\$n // []) | any_c(. == \$k) | not)" "$wf")"
 [ -z "$missing" ] || fail "$job does not need: $(tr '\n' ' ' <<<"$missing")"
 [ "$(q ".jobs.\"$job\".concurrency.group")" = 'tryout-apk-${{ github.event.pull_request.number }}' ] \
   || fail "$job concurrency group must be tryout-apk-<pull request number>"

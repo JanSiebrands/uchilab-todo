@@ -42,6 +42,8 @@ Gradle kompiliert Kotlin im eigenen Prozess (kein Kotlin-Daemon), ein unbenutzte
 
 **Gegenproben:** `tools/checks/counterprobes/run-all.sh` baut je Prüfung einen Fehler in eine Wegwerf-Kopie des Projekts ein und zeigt am Exit-Code, dass die Prüfung rot wird (bei Lint mit älterer Version: grün bleibt). Der eingecheckte Stand wird nicht verändert. Gegen einen anderen Stand: `COUNTERPROBE_SOURCE=<verzeichnis> tools/checks/counterprobes/run-all.sh`.
 
+Dass die Gegenproben 15a bis 15f ohne ihre Prüfung fehlschlagen, zeigt `tools/checks/counterprobes/verify-stored-fields-probes.sh [<commit>]` (nicht in `run-all.sh`).
+
 Dass die Gegenproben 10 bis 14b ohne ihre Prüfung fehlschlagen, zeigt `tools/checks/counterprobes/verify-stored-data-probes.sh [<commit>]` (nicht in `run-all.sh`): Es lässt sie gegen den Stand vor den Prüfungen (`2eced09`) laufen, 12a/12b zusätzlich gegen eine Kopie mit abgeschalteter Regel für exportierte Komponenten.
 
 Dass 03a, 04a und 04b nach einem Update von `activity-compose` gültig bleiben, zeigt `tools/checks/counterprobes/verify-version-independence.sh [<version>]` (braucht Netz, nicht in `run-all.sh`): Es hebt die Version in einer Kopie auf die angegebene bzw. neueste veröffentlichte, schreibt Lock-Stand und Prüfsummen neu und lässt die drei Gegenproben dagegen laufen.
@@ -79,6 +81,7 @@ Die Domain kennt weder Android noch Compose; `domain` und `data` entstehen ab S2
 - kein externer, geteilter, Cache- oder Direct-Boot-Speicher im Quelltext der App (z. B. `getExternalFilesDir`, `MediaStore`, Storage Access Framework, `cacheDir`, `createTempFile`, `createDeviceProtectedStorageContext`) (Security P6, DSGVO P3). Geprüft werden alle `.kt`/`.java` unter `app/src/`, außer `test*`, `androidTest*` und `testFixtures*`. Treffer in Kommentaren zählen, Ausnahmen gibt es nicht; die Regeln stehen in `tools/checks/src/main/kotlin/de/uchilab/checks/SourceCheck.kt` und werden nur nach Rückfrage bei Security und DSGVO geändert,
 - jede Berechtigung muss in `tools/checks/permissions-allowlist.txt` stehen (auch über Abhängigkeiten eingeschleppte); `INTERNET` und `ACCESS_NETWORK_STATE` bleiben auch dann verboten,
 - Backup und Transfer aus: das Manifest verweist auf `dataExtractionRules` und `fullBackupContent`, beide Dateien existieren, `<cloud-backup>`, `<device-transfer>` und `<cross-platform-transfer platform="ios">` sind vorhanden, alle neun Bereiche sind ausgeschlossen, kein `<include>`,
+- gespeicherte Felder (DSGVO P4): Die Spalten aller Tabellen im Room-Schema unter `app/schemas/` (je Datenbank die Version, die der Code in `@Database(version = …)` hat) müssen genau den Einträgen `tabelle.spalte` in `tools/checks/stored-fields.txt` entsprechen. Rot bei einem Feld, das nicht in der Liste steht, bei einem Listeneintrag ohne Spalte und wenn kein Schema gefunden wird. Version und `identityHash` liest die Prüfung aus dem von Room erzeugten `<Datenbank>_Impl` (`app/build/generated/ksp/debug`). Rot ist auch eine Schema-Datei mit höherer Version als im Code (veraltet, sie könnte sonst ein neues Feld verdecken), ein Schema mit anderem `identityHash` als der Code, eine Datenbank ohne Schema-Ordner und ein Schema-Ordner ohne Datenbank im Code. `privacyCheck` erzeugt das Schema vorher aus dem aktuellen Code (`kspDebugKotlin`, `kspReleaseKotlin`, `copyRoomSchemas`). Danach prüft `tools/checks/schema-check.sh` in der CI, dass `app/schemas` dem Commit entspricht. Ein neues Feld braucht also ein eingechecktes, neu erzeugtes Schema und einen Listeneintrag. Die Liste wird nur nach Rückfrage bei DSGVO geändert (V7),
 - jede Abhängigkeit muss auf der Allowlist stehen (`tools/checks/allowlist.txt` für die App, `tools/checks/allowlist-test.txt` zusätzlich für Tests). Bekannte Tracker stehen in `denylist.txt` und führen zu einer klaren Fehlermeldung.
 
 **Neue Abhängigkeit aufnehmen:** Gruppe (oder `gruppe:artefakt`) bewusst in die passende Allowlist eintragen. Die Änderung wird im Pull Request geprüft. Danach `./gradlew :app:dependencies --write-locks` und `./gradlew --write-verification-metadata sha256 assembleDebug assembleRelease testDebugUnitTest lint` ausführen und die geänderten Dateien einchecken.
@@ -87,7 +90,7 @@ Die Checks sind selbst getestet, inklusive Negativtests (`tools/checks/src/test`
 
 ## 7. Pipeline
 Bei jedem Pull Request, Push auf `main` und täglich auf `main` läuft GitHub Actions (`.github/workflows/ci.yml`), ohne Secrets:
-1. Wrapper-Prüfung, dann Build (Debug), Release-Build mit R8, Unit- und UI-Tests, Lint, `r8Check`, `privacyCheck`
+1. Wrapper-Prüfung, dann Build (Debug), Release-Build mit R8, Unit- und UI-Tests, Lint, `r8Check`, `privacyCheck`, danach `schema-check.sh` (eingechecktes Room-Schema passt zum Code)
 2. Gegenproben (`tools/checks/counterprobes/run-all.sh`)
 3. App-Start auf dem Emulator als Debug und als Release mit R8, mit Gegenprobe ohne Launcher-Eintrag
 4. Secret-Scan (Arbeitsbaum und Git-Historie)

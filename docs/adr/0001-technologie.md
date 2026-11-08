@@ -6,7 +6,7 @@ Status: angenommen (Plan des Architekten in UCH-14, Entscheidungen von Jan in UC
 - Kotlin und Jetpack Compose (Material 3), ein einzelnes Gradle-Modul `app` (YAGNI; Aufteilung in Module erst mit Grund und eigenem ADR).
 - Gradle Kotlin DSL, Wrapper eingecheckt (mit Prüfsumme der Distribution), Version Catalog `gradle/libs.versions.toml`, alle Versionen fest gepinnt (keine dynamischen Versionen).
 - Gradle Dependency Verification (`gradle/verification-metadata.xml`, SHA-256) und Dependency Locking (`app/gradle.lockfile`).
-- Keine DI-Frameworks, keine Netzwerk-Bibliotheken. Für S2 vorgesehen: Room (AndroidX), Entscheidung per ADR bei S2.
+- Keine DI-Frameworks, keine Netzwerk-Bibliotheken. Datenhaltung (Room 3, KSP): siehe [ADR 0003](0003-datenhaltung.md).
 - minSdk 26 (Android 8.0): deckt praktisch alle aktiven Geräte, vermeidet Desugaring für `java.time`, Adaptive Icons und Notification-Channels sind Standard.
 - compileSdk und targetSdk 37 (aktuelle stabile API zum Umsetzungszeitpunkt; Compose 1.12 verlangt compileSdk 37).
 - Application-ID `de.uchilab.todo` (Arbeitsname; Umstellung auf den Namen „Kerbholz“ in S12 an einer Stelle).

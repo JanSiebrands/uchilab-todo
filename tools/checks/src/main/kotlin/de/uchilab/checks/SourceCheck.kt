@@ -3,7 +3,8 @@ package de.uchilab.checks
 /**
  * Text rules for the app's own Kotlin and Java sources that ship with the APK: no logging (Security L2,
  * DSGVO V5) and no storage outside the app's internal, credential encrypted storage (Security D2, D3,
- * DSGVO V1). Matches in comments and strings count; there is deliberately no exception mechanism.
+ * DSGVO V1), and no code path that deletes or replaces the task database (ADR 0003, UCH-78). Matches in
+ * comments and strings count; there is deliberately no exception mechanism.
  */
 object SourceCheck {
     data class Rule(val id: String, val reference: String, val pattern: Regex)
@@ -13,7 +14,8 @@ object SourceCheck {
     private val testSourceSetPrefixes = listOf("test", "androidTest", "testFixtures")
     private val sourceExtensions = setOf("kt", "java")
 
-    // Change only after asking Security and DSGVO (Security L2/section 6, DSGVO V7 point 4).
+    // Change only after asking Security and DSGVO (Security L2/section 6, DSGVO V7 point 4); for the rules of
+    // ADR 0003/UCH-78 they agree in their review stages of UCH-86.
     // Removing a rule is a code change with a test change and therefore visible in review.
     val rules: List<Rule> = listOf(
         Rule("android.util.Log", "Security L2, DSGVO V5",
@@ -32,6 +34,16 @@ object SourceCheck {
                 """\b(CreateDocument|OpenDocument|OpenDocumentTree|OpenMultipleDocuments)\b""")),
         Rule("Direct Boot storage", "Security D3, DSGVO V1", Regex("""\bcreateDeviceProtectedStorageContext\b""")),
         Rule("cache and temp files", "DSGVO V1", Regex("""\b(get)?[cC]acheDir\b|\bcreateTempFile\b""")),
+        // A damaged or outdated database is never deleted or replaced (ADR 0003, UCH-78): no destructive
+        // migration, no prepackaged database (Room deletes the file to copy it), no deleting the file, and no
+        // way back to Android's deleting standard error handler or the standard driver that uses it.
+        // AndroidSQLiteConnection (used by the own driver) is allowed.
+        Rule("destructive migration", "ADR 0003, UCH-78",
+            Regex("""\bfallbackToDestructiveMigration\w*|\ballowDataLossOnRecovery\b|\bdropAllTables\b""")),
+        Rule("prepackaged database", "ADR 0003, UCH-78", Regex("""\bcreateFrom(Asset|File|InputStream)\b""")),
+        Rule("delete database", "ADR 0003, UCH-78", Regex("""\bdeleteDatabase\b""")),
+        Rule("deleting error handler", "ADR 0003, UCH-78",
+            Regex("""\bDefaultDatabaseErrorHandler\b|\bopenOrCreateDatabase\b|\bAndroidSQLiteDriver\b""")),
     )
 
     /**

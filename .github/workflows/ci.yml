@@ -43,6 +43,9 @@ jobs:
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
       - id: gradle
         run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+      # privacyCheck regenerated app/schemas from the code (KSP + copyRoomSchemas). Red if that changed the
+      # checked-in schema, i.e. the field list was checked against a stale schema (DSGVO P4, counterprobe 15c).
+      - run: tools/checks/schema-check.sh
       # Reviewers read this run instead of building themselves (UCH-66): reports, debug APK and R8 mapping,
       # also after a red build. Build outputs only, no signing key, no secret (the repository is public).
       - if: always()
@@ -97,7 +100,12 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - run: ./gradlew --console=plain assembleDebug assembleRelease
+      # The seed for emulator-tasks.sh: invented tasks written by the S2 data layer (EmulatorSeedTest), only in
+      # app/build/emulator-seed, never checked in.
+      - run: >-
+          ./gradlew --console=plain assembleDebug assembleRelease
+          :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
+          -Puchilab.seedOut="$PWD/app/build/emulator-seed"
       # Hardware acceleration for the emulator (standard Linux runners have KVM).
       - name: Enable KVM
         run: |
@@ -128,9 +136,104 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # S4b (UCH-86): a damaged database is never deleted and the read failure notice shows, debug and release (R8),
+  # with counterprobes 16k-16n. A job of its own: the emulator job already takes about 21 minutes.
+  emulator-read-failure:
+    name: Read failure on emulator (debug and release with R8)
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
+      - run: tools/checks/wrapper-check.sh
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      # Case C starts from the seed (EmulatorSeedTest), only in app/build/emulator-seed, never checked in.
+      - run: >-
+          ./gradlew --console=plain assembleDebug assembleRelease
+          :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
+          -Puchilab.seedOut="$PWD/app/build/emulator-seed"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: aosp_atd
+          arch: x86_64
+          script: tools/checks/emulator-read-failure-run.sh
+      # Logs written by tools/checks/emulator-read-failure-run.sh (logcat), also after a red run.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: read-failure-logs-${{ env.REVIEW_SHA }}
+          path: app/build/emulator-artifacts
+          retention-days: 14
+          if-no-files-found: error
+
+  # Screenshots for the feature PR (UCH-65). aosp_atd renders no picture (screencap and the emulator host give a
+  # single colour), so this job uses the full image with rendering; it runs the whole release check again with
+  # SCREENSHOTS set. A blank screenshot turns the job red (png-not-blank.py, counterprobe 16i).
+  screenshots:
+    name: Screenshots for the pull request (release with R8)
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: tools/checks/wrapper-check.sh
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      # Technical seed for the checks (EmulatorSeedTest) and readable seed per language for the pictures
+      # (ShowcaseSeedTest, plan UCH-81 section 4); both only in app/build, never checked in.
+      - run: >-
+          ./gradlew --console=plain assembleRelease
+          :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
+          --tests de.uchilab.todo.data.ShowcaseSeedTest
+          -Puchilab.seedOut="$PWD/app/build/emulator-seed"
+          -Puchilab.showcaseOut="$PWD/app/build/showcase-seed"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # Pinned like the emulator job (UCH-62, PR #9): emulator-build 16740729 = 37.2.13.0; the system image
+      # revision cannot be pinned, emulator-versions.sh logs it (UCH-112). AVD name and options are set here and
+      # passed on, because the language switch starts the emulator again with exactly these (restart_emulator
+      # in emulator-lib.sh instead of adb reboot, during which the emulator died; UCH-112).
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          EMULATOR_AVD: test
+          EMULATOR_OPTIONS: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          emulator-build: "16740729"
+          avd-name: ${{ env.EMULATOR_AVD }}
+          emulator-options: ${{ env.EMULATOR_OPTIONS }}
+          script: |
+            tools/checks/emulator-versions.sh
+            tools/checks/emulator-screenshots.sh
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-${{ env.REVIEW_SHA }}
+          path: app/build/emulator-artifacts
+          retention-days: 14
+          if-no-files-found: error
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-26.04
+    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -142,6 +245,9 @@ jobs:
   vulnerabilities:
     name: Dependency vulnerability scan
     runs-on: ubuntu-26.04
+    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: tools/checks/vuln-scan-selftest.sh
@@ -153,7 +259,7 @@ jobs:
   tryout-apk:
     name: APK to try out (pull requests only)
     if: github.event_name == 'pull_request'
-    needs: [build, counterprobes, emulator, secrets, vulnerabilities]
+    needs: [build, counterprobes, emulator, emulator-read-failure, screenshots, secrets, vulnerabilities]
     runs-on: ubuntu-26.04
     # Two runs of the same pull request must not both create a key: wait instead of cancelling.
     concurrency:

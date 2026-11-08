@@ -2,4 +2,37 @@
 <resources>
     <!-- Working title; the final name (Kerbholz) follows in story S12. Same text in both languages. -->
     <string name="app_name">uchilab-todo</string>
+
+    <string name="task_list_empty_title">No tasks yet</string>
+    <string name="task_list_empty_body">Your tasks will show up here, newest at the top.</string>
+    <string name="task_list_error_title">Your tasks can’t be loaded right now</string>
+    <string name="task_list_error_body">The app hasn’t deleted anything. Close it and open it again. If that doesn’t help, restart your device.</string>
+    <!-- Spoken by TalkBack for one entry: title and the whole note. -->
+    <string name="task_item_description">%1$s. Note: %2$s</string>
+
+    <string name="task_list_empty_hint">Tap “New task” to add your first one.</string>
+
+    <string name="new_task_action">New task</string>
+    <string name="new_task_heading">New task</string>
+    <!-- Spoken only: description of the close sign. -->
+    <string name="new_task_close">Close</string>
+    <string name="new_task_save">Save</string>
+    <string name="new_task_title_label">Title</string>
+    <string name="new_task_title_required">Required</string>
+    <string name="new_task_note_label">Note (optional)</string>
+    <string name="new_task_title_missing">Enter a title.</string>
+    <string name="new_task_title_too_long">The title is too long, %1$s characters max.</string>
+    <string name="new_task_note_too_long">The note is too long, %1$s characters max.</string>
+    <!-- Visible counter: characters used / limit. -->
+    <string name="new_task_counter">%1$s / %2$s</string>
+    <!-- Spoken by TalkBack for the counter. -->
+    <string name="new_task_counter_description">%1$s of %2$s characters</string>
+    <string name="new_task_save_failed_title">Not saved</string>
+    <string name="new_task_save_failed_body">Your text is still here. Check that your device has free storage, then tap Save again.</string>
+    <string name="new_task_discard_title">Discard this task?</string>
+    <string name="new_task_discard_body">The title and note won’t be saved.</string>
+    <string name="new_task_discard_keep">Keep editing</string>
+    <string name="new_task_discard_confirm">Discard</string>
+    <!-- Spoken by TalkBack after a task was created. -->
+    <string name="new_task_created">Task added</string>
 </resources>

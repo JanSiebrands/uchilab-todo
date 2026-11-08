@@ -1,10 +1,15 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room3)
     id("de.uchilab.privacy-check")
 }
 
 kotlin { jvmToolchain(21) }
+
+// Exported schema of the task database (ADR 0003); checked in, input of later migrations and the field list.
+room3 { schemaDirectory("$projectDir/schemas") }
 
 // Exact versions per configuration in app/gradle.lockfile; also the input of the vulnerability scan.
 dependencyLocking { lockAllConfigurations() }
@@ -37,6 +42,10 @@ android {
         unitTests.all {
             // Robolectric for recent Android SDKs reflects into JDK internals.
             it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+            // Output dir of EmulatorSeedTest (tools/checks/emulator-tasks.sh); without it the test is skipped.
+            providers.gradleProperty("uchilab.seedOut").orNull?.let { dir -> it.systemProperty("uchilab.seedOut", dir) }
+            // Output dir of ShowcaseSeedTest (tools/checks/emulator-showcase.sh); without it the test is skipped.
+            providers.gradleProperty("uchilab.showcaseOut").orNull?.let { dir -> it.systemProperty("uchilab.showcaseOut", dir) }
         }
     }
 
@@ -72,7 +81,13 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
 
+    implementation(libs.room3.runtime)
+    implementation(libs.sqlite.framework)
+    implementation(libs.kotlinx.coroutines.android)
+    ksp(libs.room3.compiler)
+
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
@@ -84,6 +99,8 @@ privacyCheck {
     testAllowlist.set(rootProject.file("tools/checks/allowlist-test.txt"))
     denylist.set(rootProject.file("tools/checks/denylist.txt"))
     permissionAllowlist.set(rootProject.file("tools/checks/permissions-allowlist.txt"))
+    storedFields.set(rootProject.file("tools/checks/stored-fields.txt"))
+    schemaDirectory.set(layout.projectDirectory.dir("schemas"))
 }
 
 // The checks are only trustworthy if their own tests (incl. negative tests) pass first.

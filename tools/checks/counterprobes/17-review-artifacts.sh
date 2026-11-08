@@ -20,6 +20,8 @@ f="$(variant emu-path.yml)"; replace "$f" "path: app/build/emulator-artifacts" "
 expect_red "(d) wrong path of the emulator logs" "emulator-logs: path must be" "$check" "$f"
 f="$(variant no-emu.yml)"; yq -i 'del(.jobs.emulator.steps[] | select(.uses // "" | test("^actions/upload-artifact@")))' "$f"
 expect_red "(e) upload step of the emulator logs removed" "emulator needs exactly one upload step for emulator-logs" "$check" "$f"
+f="$(variant no-read-failure.yml)"; yq -i 'del(.jobs."emulator-read-failure".steps[] | select(.uses // "" | test("^actions/upload-artifact@")))' "$f"
+expect_red "(e') upload step of the read failure logs removed" "emulator-read-failure needs exactly one upload step for read-failure-logs" "$check" "$f"
 f="$(variant always.yml)"; yq -i "del(.jobs.build.steps[] | select($apk_upload) | .if)" "$f"
 expect_red "(f) upload without if: always()" "debug-apk: upload needs if: always()" "$check" "$f"
 f="$(variant retention.yml)"; yq -i "(.jobs.build.steps[] | select($apk_upload) | .with.retention-days) = 7" "$f"
@@ -45,6 +47,10 @@ cp tools/checks/emulator-run.sh emulator-run.bak
 replace tools/checks/emulator-run.sh 'logs="$here/../../app/build/emulator-artifacts"' 'logs="$here/../../build/emulator-logs"'
 expect_red "(p) emulator-run.sh writes its logs elsewhere" "does not write its logs to app/build/emulator-artifacts" "$check" "$wf"
 cp emulator-run.bak tools/checks/emulator-run.sh
+cp tools/checks/emulator-read-failure-run.sh emulator-read-failure-run.bak
+replace tools/checks/emulator-read-failure-run.sh 'logs="$here/../../app/build/emulator-artifacts"' 'logs="$here/../../build/emulator-logs"'
+expect_red "(p') emulator-read-failure-run.sh writes its logs elsewhere" "emulator-read-failure-run.sh does not write its logs to app/build/emulator-artifacts" "$check" "$wf"
+cp emulator-read-failure-run.bak tools/checks/emulator-read-failure-run.sh
 
 # Expected files (tools/ci/review-artifacts.sh): a fake build output with every file, then one file missing.
 collect=tools/ci/review-artifacts.sh
