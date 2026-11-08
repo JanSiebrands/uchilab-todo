@@ -10,7 +10,7 @@ S2 speichert erstmals Daten. Es gelten die Vorgaben von Security ([`docs/sicherh
 |---|---|---|
 | Speicher | Room 3 (`androidx.room3`, 3.0.x) mit der SQLite des Systems über `KeepFileSQLiteDriver` | AndroidX-Standard, Flow für Änderungen, parametrisierte Abfragen per Annotation (D6), Schema-Export für Migration (S11). Kein `BundledSQLiteDriver`: nativer Code (Security A4). |
 | Annotation-Prozessor | KSP | Room 3 verlangt KSP (Security A3). |
-| Schema-Export | Room-Gradle-Plugin, `schemaDirectory("$projectDir/schemas")`, eingecheckt | Grundlage für Migrationen und die Feldliste (DSGVO P4). |
+| Schema-Export | Room-Gradle-Plugin, `schemaDirectory("$projectDir/schemas")`, eingecheckt | Grundlage für Migrationen und die Feldliste (DSGVO P4). Eine Änderung an `app/schemas/**` oder an einer Klasse mit `@Entity`, `@Database` oder `@Dao` ist Anlass für Security und DSGVO (unten). |
 | Keine Verschlüsselung | kein SQLCipher, kein `security-crypto` | Security D4. |
 | Kein Destruktiv-Fallback | verboten: `fallbackToDestructiveMigration*`, `allowDataLossOnRecovery()` | Würde bei einem Fehler stillschweigend alle Aufgaben löschen. Geprüft durch `SourceCheck`. Migrationen kommen in S11. |
 | Treiber | `KeepFileSQLiteDriver` mit eigenem `DatabaseErrorHandler`, der nie löscht; 0 Byte gilt als beschädigt (UCH-80) | Der Standard von Android löscht eine beschädigte Datei beim Öffnen und bei jeder Abfrage und startet leer. Die App zeigt stattdessen den Lesefehler, die Datei bleibt. |
@@ -41,10 +41,10 @@ erDiagram
 Sortiert wird nach `id DESC`, nicht nach `created_at`. Die ID ist streng steigend und wird nie wiederverwendet, daher bleibt die Reihenfolge bei zurückgestellter Uhr, Zeitzonenwechsel und gleicher Millisekunde fest. Ändern berührt ID und `created_at` nicht. Kein zusätzliches Feld nötig.
 
 ## Backup-Domain `database` (Security B1)
-Der Name `tasks.db` hat keinen Pfad, Room löst ihn über `Context.getDatabasePath` auf (Domain `database`). Belegt durch (1) den Code, (2) den Robolectric-Test „the database lives in the databases folder and nowhere else“ über die Produktions-Fabrik, (3) die unveränderten Backup-Regeln mit `BackupRulesCheck` und den Gegenproben 06a bis 06f, die alle Domains ausschließen.
+Der Name `tasks.db` hat keinen Pfad, Room löst ihn über `Context.getDatabasePath` auf (Domain `database`). Belegt durch (1) den Code, (2) den Robolectric-Test „the database lives in the databases folder and nowhere else“ über die Produktions-Fabrik, (3) die unveränderten Backup-Regeln mit `BackupRulesCheck` und seinen Unit-Tests (`BackupRulesCheckTest`, früher Gegenproben 06a bis 06f), die alle Domains ausschließen.
 
-## Feldliste (DSGVO P4)
-Quelle ist das exportierte Schema unter `app/schemas/`. Die Prüfung gegen `tools/checks/stored-fields.txt` folgt als eigenes Issue an CI/CD (Plan UCH-47, Abschnitt 8).
+## Feldliste (DSGVO P4) und Anlass für Security und DSGVO
+Quelle ist das exportierte Schema unter `app/schemas/`. Die Feldliste steht als Doku in `docs/datenschutz/gespeicherte-felder.md` und wird bei jeder Schema-Änderung im selben PR nachgezogen. Eine Pipeline-Prüfung dafür gibt es seit UCH-124 nicht mehr (ADR 0002, Entscheidung 10). **Regel:** Berührt der Diff einer Story `app/schemas/**` oder eine Klasse mit `@Entity`, `@Database` oder `@Dao`, ist das ein Anlass für Security und DSGVO. Der Architekt prüft das in jedem Story-Review mit `git diff --name-only <merge-base> <sha> -- app/schemas` und `git grep -lE '@(Entity|Database|Dao)\b' <sha> -- app/src/main` im Abgleich mit dem Diff. Fehlt dann das Unter-Issue für Security und DSGVO, ist das **blockierend**.
 
 ## Folgen
 - Der Treiber nutzt eine eingeschränkte API von androidx.sqlite (`AndroidSQLiteConnection`, Unterdrückung von `RestrictedApi` nur an dem einen Aufruf). Jedes Renovate-Update von `androidx.sqlite` muss `CorruptDatabaseTest` und die DAO-Tests mit diesem Treiber grün haben. Fällt die Klasse weg, wird eine eigene schlanke `SQLiteConnection` über `SQLiteDatabase` gebaut (neue Story). Alle Tests laufen über `TaskDatabase.create` und damit über diesen Treiber.
