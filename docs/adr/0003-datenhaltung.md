@@ -47,6 +47,8 @@ Der Name `tasks.db` hat keinen Pfad, Room löst ihn über `Context.getDatabasePa
 Quelle ist das exportierte Schema unter `app/schemas/`. Die Prüfung gegen `tools/checks/stored-fields.txt` folgt als eigenes Issue an CI/CD (Plan UCH-47, Abschnitt 8).
 
 ## Folgen
+- Der Treiber nutzt eine eingeschränkte API von androidx.sqlite (`AndroidSQLiteConnection`, Unterdrückung von `RestrictedApi` nur an dem einen Aufruf). Jedes Renovate-Update von `androidx.sqlite` muss `CorruptDatabaseTest` und die DAO-Tests mit diesem Treiber grün haben. Fällt die Klasse weg, wird eine eigene schlanke `SQLiteConnection` über `SQLiteDatabase` gebaut (neue Story). Alle Tests laufen über `TaskDatabase.create` und damit über diesen Treiber.
+- Der Journal-Modus ist fest WAL (`setJournalMode(WRITE_AHEAD_LOGGING)` passend zu den Öffnen-Flags des Treibers), damit das Öffnen den Dateikopf nicht verändert. Nachteil: etwas mehr Speicher auf Geräten mit wenig RAM, für eine Todo-App unerheblich.
 - Die Domain (`de.uchilab.todo.domain`) kennt kein `android.*`/`androidx.*`; Grenzen (200/2000 Grapheme) prüft `TaskContent.of`, der einzige Weg zu gültigem Inhalt (Security D5).
 - Das Repository fängt nur `android.database.SQLException` und meldet `STORAGE_FAILURE` ohne Ausnahme und Text (L3).
 - Fehlt eine Migration, wirft Room `IllegalStateException`; es wird nichts gelöscht. Der Lesefehler dafür kommt in S11.

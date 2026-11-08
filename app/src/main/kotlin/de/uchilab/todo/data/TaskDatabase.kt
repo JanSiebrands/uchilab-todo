@@ -21,6 +21,9 @@ abstract class TaskDatabase : RoomDatabase() {
         fun create(context: Context): TaskDatabase =
             Room.databaseBuilder(context.applicationContext, TaskDatabase::class.java, DATABASE_NAME)
                 .setDriver(KeepFileSQLiteDriver())
+                // Must match OPEN_FLAGS of the driver: with AUTOMATIC, Room picks TRUNCATE on low-memory devices and the
+                // driver would switch the file back to WAL on every start, writing its header each time.
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .build()
     }
 }
