@@ -58,6 +58,21 @@ class SourceCheckTest {
         Triple("""File(context.getCacheDir(), "a")""", "cache and temp files", """File(context.getCacheDirectory(), "a")"""),
         Triple("""File(context.CacheDir, "a")""", "cache and temp files", """File(context.CacheDirs, "a")"""),
         Triple("""File.createTempFile("a", "b")""", "cache and temp files", """File.createTemporary("a", "b")"""),
+        Triple("""builder.fallbackToDestructiveMigration(true)""", "destructive migration", """builder.fallbackToMigration(true)"""),
+        Triple("""builder.fallbackToDestructiveMigrationOnDowngrade(true)""", "destructive migration", """noFallbackToDestructiveMigration()"""),
+        Triple("""builder.fallbackToDestructiveMigrationFrom(true, 1)""", "destructive migration", """fallbackToDestructive(1)"""),
+        Triple("""MigrationStrategy(allowDataLossOnRecovery = true)""", "destructive migration", """MigrationStrategy(allowDataLoss = true)"""),
+        Triple("""dropAllTables(connection)""", "destructive migration", """dropAllTablesLater(connection)"""),
+        Triple("""builder.createFromAsset("tasks.db")""", "prepackaged database", """builder.createFromAssets("tasks.db")"""),
+        Triple("""builder.createFromFile(file)""", "prepackaged database", """builder.createFromFiles(file)"""),
+        Triple("""builder.createFromInputStream { stream }""", "prepackaged database", """builder.createFromStream { stream }"""),
+        Triple("""context.deleteDatabase("tasks.db")""", "delete database", """context.deleteDatabaseFiles("tasks.db")"""),
+        Triple("""SQLiteDatabase.deleteDatabase(file)""", "delete database", """SQLiteDatabase.deleteDatabases(file)"""),
+        Triple("""val h = DefaultDatabaseErrorHandler()""", "deleting error handler", """val h = KeepFileOnCorruption()"""),
+        Triple("""SQLiteDatabase.openOrCreateDatabase(path, null)""", "deleting error handler", """SQLiteDatabase.openDatabase(path, null, 0, h)"""),
+        Triple("""context.openOrCreateDatabase("tasks.db", 0, null)""", "deleting error handler", """context.openOrCreateDatabases("tasks.db")"""),
+        Triple("""builder.setDriver(AndroidSQLiteDriver())""", "deleting error handler", """builder.setDriver(KeepFileSQLiteDriver())"""),
+        Triple("""import androidx.sqlite.driver.AndroidSQLiteDriver""", "deleting error handler", """import androidx.sqlite.driver.AndroidSQLiteConnection"""),
     )
 
     @Test
@@ -69,6 +84,11 @@ class SourceCheckTest {
             assertEquals("for: $good", emptyList<String>(), check(good))
         }
         assertEquals(SourceCheck.rules.map { it.id }.toSet(), cases.map { it.second }.toSet())
+    }
+
+    @Test
+    fun `the connection class of the own driver is allowed`() {
+        assertEquals(emptyList<String>(), check("""private fun c(db: SQLiteDatabase) = AndroidSQLiteConnection(db)"""))
     }
 
     @Test
