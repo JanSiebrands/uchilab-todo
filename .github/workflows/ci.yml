@@ -106,12 +106,19 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       # aosp_atd: minimal AOSP image without Google Play services (the app uses none), fast boot.
       # The action shuts the emulator down at the end of the step.
+      # emulator-build pins the emulator binary (37.2.13.0), so a new emulator release cannot turn the job red
+      # without a code change. Renovate cannot update it; a newer build is taken over deliberately in a pull
+      # request (build ids: https://developer.android.com/studio/emulator_archive). The system image revision
+      # cannot be pinned; emulator-versions.sh writes all versions to the log first (UCH-62).
       - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           target: aosp_atd
           arch: x86_64
-          script: tools/checks/emulator-run.sh
+          emulator-build: "16740729"
+          script: |
+            tools/checks/emulator-versions.sh
+            tools/checks/emulator-run.sh
       # Logs written by tools/checks/emulator-run.sh (logcat), also after a red run.
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
