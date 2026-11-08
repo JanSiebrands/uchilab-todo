@@ -199,7 +199,15 @@ shot() {
   local file="$SCREENSHOTS/$name-$1.png"
   mkdir -p "$SCREENSHOTS"
   sleep 1
-  timeout 30 adb exec-out screencap -p >"$file" || fail "screenshot $1 failed"
+  # Taken by the emulator host, not by screencap in the device: screencap on aosp_atd (no hardware rendering)
+  # gives black frames although the UI is there (run 42435169228, UCH-65).
+  local tmp
+  tmp=$(mktemp -d)
+  timeout 30 adb emu screenrecord screenshot "$tmp" >/dev/null || fail "screenshot $1 failed"
+  local taken=("$tmp"/*.png)
+  [ -f "${taken[0]}" ] || fail "screenshot $1: emulator wrote no png"
+  mv "${taken[0]}" "$file"
+  rmdir "$tmp" 2>/dev/null || true
   [ -s "$file" ] || fail "screenshot $1 empty"
   # A display that is off gives a black frame of the right size; only a picture with content counts.
   python3 -I "$here/png-not-blank.py" "$file" || fail "screenshot $1 blank ($(display_state))"
