@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Screenshots for the feature PR (plan UCH-81 sections 2-5, Z1-Z5, Z9): for the light/dark mode and the device
-# language the caller has set (emulator-screenshots.sh), this script reads both back from the device and writes
+# Screenshots for the feature PR (plan UCH-81 sections 2-5): for the light/dark mode and the device language the
+# caller has set (emulator-screenshots.sh), this script reads both from the device and writes
 # release-<state>-<light|dark>-<de|en>.png to $SCREENSHOTS:
 #   every combination: empty (fresh install), list (readable seed of ShowcaseSeedTest for the language);
 #   light-en and dark-de: input-empty, input-title-missing, input-title-too-long, input-discard-dialog;
 #   light-de: input-font200 (font scale 2.0); dark-de: input-landscape (user rotation 1).
-# Before each picture the state's test tag must be in the dump directly before and after screencap (shot in
-# emulator-lib.sh). The language is checked by comparing the text of new_task_action with the string resource
-# of that language (ui-node-text.py), the seed by showcase-seed-check.py and the list check below, "Save" at
-# 200 % font and in landscape by ui-node-visible.py. The list check is ui-list-matches.py (counterprobe 16u, no
-# emulator). The discard dialog is opened by tapping close and its buttons must not be focused after the picture
-# (ui-node-unfocused.py; counterprobes 16v without and 16w with emulator). Every setting is read back and reset
-# afterwards.
+# Before each picture the script waits for the state's test tag (operation). The pictures are evidence, not a
+# check (UCH-116 R2): whether they show the right state, language and theme, the designer and the PO judge by
+# looking at them. The discard dialog is opened by tapping close, as with a finger (UCH-99). Every setting is
+# read back and reset afterwards.
 # Usage: SCREENSHOTS=<dir> emulator-showcase.sh <apk> <showcase-seed-dir>   (holds de/ and en/ of
 # ShowcaseSeedTest). Needs `adb root` (emulator only), invented data only; the exit code decides.
 set -euo pipefail
@@ -20,7 +17,6 @@ apk="$1"
 seed_root="$2"
 package="de.uchilab.todo"
 app_dir="/data/data/$package"
-res="$here/../../app/src/main/res"
 name="release"
 tmp="$(mktemp -d)"
 
@@ -70,8 +66,8 @@ case "$(timeout 10 adb shell cmd uimode night | tr -d '\r')" in
   *) fail "night mode unknown: $(timeout 10 adb shell cmd uimode night | tr -d '\r')" ;;
 esac
 case "$(timeout 10 adb shell getprop persist.sys.locale | tr -d '\r')" in
-  de-DE) lang=de; strings="$res/values-de/strings.xml" ;;
-  en-US) lang=en; strings="$res/values/strings.xml" ;;
+  de-DE) lang=de ;;
+  en-US) lang=en ;;
   *) fail "device language unknown: persist.sys.locale=$(timeout 10 adb shell getprop persist.sys.locale | tr -d '\r')" ;;
 esac
 export SHOT_BUILD=release SHOT_SUFFIX="-$mode-$lang"
@@ -80,34 +76,12 @@ seed="$seed_root/$lang"
 log "mode $mode, language $lang (read back from the device), seed $seed"
 [ -s "$seed/tasks.db" ] || fail "seed $seed/tasks.db missing (ShowcaseSeedTest with -Puchilab.showcaseOut)"
 [ -s "$seed/tasks.json" ] || fail "seed $seed/tasks.json missing"
-python3 -I "$here/showcase-seed-check.py" "$seed/titles.txt" || fail "seed $seed not readable"
 
 # Portrait and font scale 1.0 for the regular pictures.
 setting system accelerometer_rotation 0
 setting system user_rotation 0
 setting system font_scale 1.0
 screen_on
-
-# keep_dump <state>: copy of the last UI dump next to the logs (EMULATOR_LOGS, artifact screenshots-<sha>), so
-# reviewers and fixtures of the counterprobes can use the real dump of this state.
-keep_dump() {
-  [ -n "${EMULATOR_LOGS:-}" ] || return 0
-  mkdir -p "$EMULATOR_LOGS" && cp "$tmp/window.xml" "$EMULATOR_LOGS/$check-$name-$1-window.xml" || true
-}
-
-# language_matches <step>: new_task_action shows the value of the resource of this language.
-language_matches() {
-  dump_ui || fail "$1: UI dump failed"
-  python3 -I "$here/ui-node-text.py" "$tmp/window.xml" "$action_tag" "$strings" new_task_action \
-    || fail "$1: wrong language (new_task_action does not match $strings)"
-}
-
-# list_matches: all titles of the seed in order (tops strictly increasing), every note of the seed shown in its
-# entry and no entry without a note in the seed shows a note line (one with, one without, plan section 4).
-list_matches() {
-  dump_ui || return 1
-  python3 -I "$here/ui-list-matches.py" "$tmp/window.xml" "$seed/tasks.json" "$item_tag" >"$tmp/match.txt" 2>&1
-}
 
 # tap <step> <tag>: waits up to 30 s for the node and taps the centre of its bounds.
 tap() {
@@ -128,27 +102,16 @@ restart() {
   timeout 30 adb shell am force-stop "$package"
   wait_process_gone
   start_app "$1"
-  wait_until 90 "$1: list not shown ($(cat "$tmp/match.txt" 2>/dev/null))" list_matches
+  wait_until 90 "$1: list not shown" shown "$list_tag"
 }
 
-# display_size: "width height" of the display in portrait (wm size; an override wins over the physical size).
-display_size() {
-  timeout 10 adb shell wm size | tr -d '\r' | sed -n 's/.*: \([0-9]*\)x\([0-9]*\)$/\1 \2/p' | tail -n 1
-}
 rotation_is() { dump_ui && grep -q "<hierarchy rotation=\"$1\"" "$tmp/window.xml"; }
-
-# save_visible <step> <width> <height>
-save_visible() {
-  dump_ui || fail "$1: UI dump failed"
-  python3 -I "$here/ui-node-visible.py" "$tmp/window.xml" "$save_tag" "$2" "$3" || fail "$1: Save not visible"
-}
 
 install_app
 
 # Empty state: fresh install, no database.
 start_app "empty"
 wait_until 60 "empty: empty state not shown" shown "$empty_tag"
-language_matches "empty"
 shot empty "$empty_tag"
 
 # List: readable seed of this language.
@@ -156,10 +119,7 @@ timeout 30 adb shell am force-stop "$package"
 wait_process_gone
 install_db "$seed/tasks.db"
 start_app "list"
-wait_until 90 "list: readable seed not shown as expected ($(cat "$tmp/match.txt" 2>/dev/null))" list_matches
-log "list: $(cat "$tmp/match.txt")"
-keep_dump list
-language_matches "list"
+wait_until 90 "list: list not shown" shown "$list_tag"
 shot list "$list_tag"
 
 if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
@@ -175,14 +135,10 @@ if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   shot input-title-too-long "$title_counter_tag"
   # The dialog for the picture is opened by touch (close button), as with a finger: a key event (input text,
   # KEYCODE_BACK) leaves touch mode and Compose then shows a focus frame on a dialog button (plan UCH-99
-  # section 2; counterprobe 16w opens it by key and must turn red here).
+  # section 2).
   tap "input" "$close_tag"
   wait_until 30 "input: no discard dialog after tapping close" shown "$discard_dialog_tag"
   shot input-discard-dialog "$discard_dialog_tag"
-  dump_ui || fail "input: UI dump failed"
-  keep_dump discard-dialog
-  python3 -I "$here/ui-node-unfocused.py" "$tmp/window.xml" "$discard_keep_tag" "$discard_confirm_tag" \
-    || fail "input: discard dialog button focused or missing after the picture"
   # Back opens the same dialog (check of UCH-81, kept): first back to the form with "Keep".
   tap "input" "$discard_keep_tag"
   wait_until 30 "input: discard dialog still open after Keep" gone "$discard_dialog_tag"
@@ -196,14 +152,10 @@ if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   wait_until 30 "input: input still open after discarding" gone "$form_tag"
 fi
 
-read -r width height <<<"$(display_size)"
-[ -n "${height:-}" ] || fail "display size unknown (wm size)"
-
 if [ "$mode-$lang" = light-de ]; then
   setting system font_scale 2.0
   restart "font200"
   open_new_task "font200"
-  save_visible "font200" "$width" "$height"
   shot input-font200 "$form_tag"
   setting system font_scale 1.0
   restart "font200 reset"
@@ -214,7 +166,6 @@ if [ "$mode-$lang" = dark-de ]; then
   wait_until 30 "landscape: display not rotated (hierarchy rotation 1)" rotation_is 1
   restart "landscape"
   open_new_task "landscape"
-  save_visible "landscape" "$height" "$width"
   shot input-landscape "$form_tag"
   setting system user_rotation 0
   wait_until 30 "landscape reset: display not back in portrait" rotation_is 0
