@@ -201,6 +201,14 @@ shot() {
   sleep 1
   timeout 30 adb exec-out screencap -p >"$file" || fail "screenshot $1 failed"
   [ -s "$file" ] || fail "screenshot $1 empty"
+  # A display that is off gives a black frame of the right size; only a picture with content counts.
+  python3 -I "$here/png-not-blank.py" "$file" || fail "screenshot $1 blank ($(display_state))"
+}
+
+# display_state: power and display state in one line, for the log.
+display_state() {
+  timeout 10 adb shell "dumpsys power | grep -E 'mWakefulness=|mStayOn='; dumpsys display | grep -E 'mScreenState='" \
+    2>/dev/null | tr -d '\r' | tr -s ' \n' ' ' || true
 }
 
 # wait_process_gone: waits up to 30 s until pidof answers "no such process" (exit 1). A hanging adb (timeout,
@@ -291,6 +299,10 @@ wait_list "after create"
 
 # Screenshots for the feature PR: list, empty input, title missing, title too long, discard dialog.
 if [ -n "${SCREENSHOTS:-}" ]; then
+  # The display may have gone off since the start (no input for a while); screencap then sees black.
+  timeout 10 adb shell svc power stayon true || fail "screenshots: svc power stayon failed"
+  timeout 10 adb shell input keyevent KEYCODE_WAKEUP || fail "screenshots: wakeup failed"
+  log "screenshots: display $(display_state)"
   shot 1-list
   open_new_task "screenshots"
   shot 2-input-empty
