@@ -22,7 +22,9 @@ import org.robolectric.annotation.Config
  * Writes the seed database for the emulator check (tools/checks/emulator-tasks.sh, plan UCH-58 section 7).
  * Only active with the system property `uchilab.seedOut` (Gradle: -Puchilab.seedOut=<dir>), otherwise skipped.
  * The tasks are created through the production code of S2 (TaskDatabase.create + RoomTaskRepository) and are
- * invented. Output: <dir>/tasks.db and <dir>/titles.txt (expected titles in list order, one per line).
+ * invented. Output: <dir>/tasks.db, <dir>/titles.txt (expected titles in list order, one per line) and
+ * <dir>/done.txt (title of the done task). The middle task is done, so "shown at its place" differs from
+ * "shown at the top or bottom" (plan UCH-63 section 6).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -42,15 +44,19 @@ class EmulatorSeedTest {
         // Unique per run, so a stale database on the device can never pass as this seed.
         val runId = UUID.randomUUID().toString().take(8)
         val first = repository.add(content("Seed-1-$runId", "Erste Zeile der Notiz\nZweite Zeile der Notiz"))
-        repository.add(content("Seed-2-$runId", null))
-        val third = repository.add(content("Seed-3-$runId", "Erledigt"))
+        val second = repository.add(content("Seed-2-$runId", "Erledigt"))
+        val third = repository.add(content("Seed-3-$runId", null))
         assertTrue(first is WriteResult.Success)
-        val doneId = (third as WriteResult.Success).value.id
+        assertTrue(third is WriteResult.Success)
+        val doneTitle = "Seed-2-$runId"
+        val doneId = (second as WriteResult.Success).value.id
         assertTrue(repository.setStatus(doneId, TaskStatus.DONE) is WriteResult.Success)
 
         // Contract of the repository: newest first. This is the order the list must show.
         val expected = listOf("Seed-3-$runId", "Seed-2-$runId", "Seed-1-$runId")
-        assertEquals(expected, repository.observeTasks().first().map { it.content.title })
+        val tasks = repository.observeTasks().first()
+        assertEquals(expected, tasks.map { it.content.title })
+        assertEquals(listOf(doneTitle), tasks.filter { it.status == TaskStatus.DONE }.map { it.content.title })
 
         // Closing the last connection checkpoints the WAL into the main file; nothing may remain next to it.
         db.close()
@@ -62,6 +68,7 @@ class EmulatorSeedTest {
         assertTrue(outDir.mkdirs())
         file.copyTo(File(outDir, TaskDatabase.DATABASE_NAME))
         File(outDir, "titles.txt").writeText(expected.joinToString("\n", postfix = "\n"))
+        File(outDir, "done.txt").writeText(doneTitle + "\n")
     }
 
     private fun content(title: String, note: String?): TaskContent =
