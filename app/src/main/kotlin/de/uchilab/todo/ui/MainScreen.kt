@@ -15,7 +15,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import de.uchilab.todo.domain.TaskStatus
+import de.uchilab.todo.ui.tasklist.StatusChange
+import de.uchilab.todo.ui.tasklist.TaskListTags
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -54,6 +62,10 @@ fun MainScreen(
     createdTaskId: TaskId? = null,
     createdAnnouncement: Boolean = false,
     onCreatedHandled: () -> Unit = {},
+    onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> },
+    statusSaveFailed: Boolean = false,
+    onStatusSaveFailedShown: () -> Unit = {},
+    statusAnnouncement: StatusChange? = null,
 ) {
     // Outside the branch on the state, so a position restored after a process restart is applied
     // as soon as the list appears. Only index and offset are saved, never titles or notes.
@@ -61,11 +73,21 @@ fun MainScreen(
 
     // A new task is on top only once the list has reported it; then jump up (with keys the list would
     // otherwise keep the entry that was visible before, and the new one would lie above the visible part).
-    val newestId = (state as? TaskListUiState.Loaded)?.tasks?.firstOrNull()?.id
+    val newestId = (state as? TaskListUiState.Loaded)?.open?.firstOrNull()?.id
     LaunchedEffect(createdTaskId, newestId) {
         if (createdTaskId != null && newestId == createdTaskId) {
             listState.scrollToItem(0)
             onCreatedHandled()
+        }
+    }
+
+    // The failure notice: long, without action, above the "New task" action (the host sits in the Scaffold).
+    val snackbarHostState = remember { SnackbarHostState() }
+    val failedText = stringResource(R.string.task_status_save_failed)
+    LaunchedEffect(statusSaveFailed) {
+        if (statusSaveFailed) {
+            snackbarHostState.showSnackbar(failedText, duration = SnackbarDuration.Long)
+            onStatusSaveFailedShown()
         }
     }
 
@@ -87,13 +109,44 @@ fun MainScreen(
                         },
                     )
                 },
+                snackbarHost = {
+                    SnackbarHost(snackbarHostState) { data ->
+                        Snackbar(data, modifier = Modifier.testTag(TaskListTags.STATUS_SNACKBAR))
+                    }
+                },
                 floatingActionButton = { if (state is TaskListUiState.Loaded) NewTaskAction(onNewTask) },
             ) { padding ->
-                TaskListScreen(state, listState, Modifier.padding(padding))
+                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding))
             }
         }
         CreatedAnnouncement(createdAnnouncement)
+        StatusAnnouncement(statusAnnouncementText(state, statusAnnouncement))
     }
+}
+
+/** The spoken text for the last saved change; the title comes from the loaded list, not from the change. */
+@Composable
+private fun statusAnnouncementText(state: TaskListUiState, change: StatusChange?): String? {
+    val loaded = state as? TaskListUiState.Loaded ?: return null
+    val title = change?.let { c -> (loaded.open + loaded.done).firstOrNull { it.id == c.id } }?.content?.title ?: return null
+    return stringResource(
+        if (change.status == TaskStatus.DONE) R.string.task_status_announce_done else R.string.task_status_announce_open,
+        title,
+    )
+}
+
+/** Invisible node whose description changes after a status change; TalkBack reads it politely. */
+@Composable
+private fun StatusAnnouncement(text: String?) {
+    Box(
+        Modifier
+            .size(1.dp)
+            .testTag(TaskListTags.STATUS_ANNOUNCEMENT)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                if (text != null) contentDescription = text
+            },
+    )
 }
 
 @Composable

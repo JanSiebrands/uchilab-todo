@@ -70,7 +70,7 @@ class CorruptDatabaseTest {
         db = null
     }
 
-    private fun titlesOf(state: TaskListUiState) = (state as TaskListUiState.Loaded).tasks.map { it.content.title }
+    private fun titlesOf(state: TaskListUiState) = (state as TaskListUiState.Loaded).let { it.open + it.done }.map { it.content.title }
 
     /** Keeps the header page intact and fills every following page with invented bytes. */
     private fun overwriteAllPagesAfterTheFirst() {
@@ -114,7 +114,7 @@ class CorruptDatabaseTest {
         assertFalse(file.exists())
         val loaded = state(open())
         assertTrue(loaded is TaskListUiState.Loaded)
-        assertTrue((loaded as TaskListUiState.Loaded).tasks.isEmpty())
+        assertTrue((loaded as TaskListUiState.Loaded).let { it.open.isEmpty() && it.done.isEmpty() })
         assertTrue(file.exists())
     }
 

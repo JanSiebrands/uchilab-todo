@@ -14,9 +14,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertFalse
 import androidx.compose.ui.semantics.SemanticsActions
@@ -475,8 +474,8 @@ class TaskListScreenTest {
         checkboxes().assertCountEquals(2)
         val texts = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()
         assertEquals(2, texts.size)
-        val done = texts[0].config
-        val open = texts[1].config
+        val open = texts[0].config
+        val done = texts[1].config
         assertEquals(listOf(context.getString(R.string.task_item_description, "Fertig", "Notiz")), done[SemanticsProperties.ContentDescription])
         assertEquals(context.getString(R.string.task_status_done), done[SemanticsProperties.StateDescription])
         assertEquals(listOf(context.getString(R.string.task_item_description, "Offen", "Notiz")), open[SemanticsProperties.ContentDescription])
@@ -488,8 +487,8 @@ class TaskListScreenTest {
         val calls = mutableListOf<Pair<TaskId, TaskStatus>>()
         onStatusChange = { id, status -> calls += id to status }
         show(loaded(listOf(task(2, "Fertig", status = TaskStatus.DONE), task(1, "Offen"))))
+        checkboxes()[0].performClick() // open entries come first
         checkboxes()[1].performClick()
-        checkboxes()[0].performClick()
         assertEquals(listOf(TaskId(1) to TaskStatus.DONE, TaskId(2) to TaskStatus.OPEN), calls)
     }
 
@@ -541,7 +540,11 @@ class TaskListScreenTest {
         onStatusChange = { id, _ -> calls += id }
         show200Percent(loaded(listOf(task(1, longTitle))))
         val box = checkboxes()[0]
-        box.assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        box.assertIsDisplayed()
+        // the node itself is the 24 dp box; the area that reacts to a tap is the 48 dp one around it
+        val touch = box.fetchSemanticsNode().touchBoundsInRoot
+        val minimum = with(composeRule.density) { 48.dp.toPx() }
+        assertTrue("touch area ${touch.width} x ${touch.height} below $minimum", touch.width >= minimum && touch.height >= minimum)
         val boxBounds = box.fetchSemanticsNode().boundsInRoot
         val title = unmerged(TaskListTags.ITEM_TITLE).fetchSemanticsNodes().single().boundsInRoot
         assertTrue(boxBounds.right <= title.left)

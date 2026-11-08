@@ -20,6 +20,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             AppTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
+                val statusSaveFailed by viewModel.statusSaveFailed.collectAsStateWithLifecycle()
+                val statusAnnouncement by viewModel.statusAnnouncement.collectAsStateWithLifecycle()
                 // Back is taken over while the input is open; it asks before discarding and does nothing while saving.
                 BackHandler(enabled = newTaskViewModel.state.open) { newTaskViewModel.onCloseRequest() }
                 MainScreen(
@@ -30,6 +32,10 @@ class MainActivity : ComponentActivity() {
                     createdTaskId = newTaskViewModel.createdTaskId,
                     createdAnnouncement = newTaskViewModel.createdAnnouncement,
                     onCreatedHandled = newTaskViewModel::onCreatedHandled,
+                    onStatusChange = viewModel::onStatusChange,
+                    statusSaveFailed = statusSaveFailed,
+                    onStatusSaveFailedShown = viewModel::onStatusSaveFailedShown,
+                    statusAnnouncement = statusAnnouncement,
                 )
             }
         }

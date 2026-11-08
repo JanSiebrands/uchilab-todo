@@ -2,6 +2,7 @@ package de.uchilab.todo.ui.tasklist
 
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -104,14 +105,14 @@ class TaskListIntegrationTest {
     }
 
     @Test
-    fun `done tasks stay in their place`() {
+    fun `a done task is listed below the open ones`() {
         add("Aufgabe 1")
         val middle = add("Aufgabe 2")
         add("Aufgabe 3")
         runBlocking { application.taskRepository.setStatus(middle.id, TaskStatus.DONE) }
         launch()
         waitForItems(3)
-        assertEquals(listOf("Aufgabe 3", "Aufgabe 2", "Aufgabe 1"), visibleTitles())
+        assertEquals(listOf("Aufgabe 3", "Aufgabe 1", "Aufgabe 2"), visibleTitles())
     }
 
     @Test
@@ -268,7 +269,10 @@ class TaskListIntegrationTest {
         assertEquals("Aufgabe 25", topTitle())
 
         tapCheckboxOf("Aufgabe 25")
-        composeRule.waitUntil(10_000) { hasDoneHeading() || composeRule.onAllNodesWithText("Aufgabe 25").fetchSemanticsNodes().isEmpty() }
+        // the entry now lives at the end of the list, so wait for the store, then for the screen to settle
+        composeRule.waitUntil(10_000) {
+            runBlocking { application.taskRepository.observeTasks().first() }.single { it.content.title == "Aufgabe 25" }.status == TaskStatus.DONE
+        }
         composeRule.waitForIdle()
 
         assertEquals("Aufgabe 24", topTitle())
