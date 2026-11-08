@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-# Fails (exit 1) if a screenshot does not match the expected theme: median brightness (Rec. 709 luma) of all
-# pixels below the status bar (top 5 % left out) above THRESHOLD for light, below it for dark (plan UCH-81
-# section 5). Always prints the measured value. Exit 2 for a file that is not a readable 8-bit PNG or a wrong
+# Fails (exit 1) if a screenshot does not match the expected theme: median brightness (Rec. 709 luma) of the
+# band from 10 % to 20 % of the picture height (the app bar below the status bar, portrait and landscape) above
+# THRESHOLD for light, below it for dark (plan UCH-81 section 5). Always prints the measured value.
+# Why the band and not the whole picture (UCH-95, first run 42478842558): the keyboard is a separate app and
+# stays light in dark mode (landscape dark: whole picture 0.902, band 0.071), and the scrim of a dialog darkens
+# a light picture (whole picture and band 0.388). Measured: light 0.976, light with scrim 0.388, dark 0.071,
+# dark with scrim 0.027; THRESHOLD lies between them. Exit 2 for a file that is not a readable 8-bit PNG or a wrong
 # argument. Usage: python3 -I png-theme.py <file.png> <light|dark>
 # Only the standard library; handles what screencap writes (8 bit, grey/RGB/RGBA, not interlaced).
 import struct
 import sys
 import zlib
 
-THRESHOLD = 0.5
+THRESHOLD = 0.25
+BAND = (10, 20)  # percent of the picture height, top and bottom (exclusive)
 CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}
 
 
@@ -68,7 +73,7 @@ def main():
         sys.exit(2)
     histogram = [0] * 256
     for width, height, bpp, row, line in rows(open(sys.argv[1], "rb").read()):
-        if row < height * 5 // 100:
+        if not height * BAND[0] // 100 <= row < height * BAND[1] // 100:
             continue
         if bpp >= 3:
             for i in range(0, width * bpp, bpp):
@@ -78,7 +83,7 @@ def main():
                 histogram[line[i]] += 1
     total, seen, median = sum(histogram), 0, 0
     if total == 0:
-        fail(2, "no pixels below the status bar")
+        fail(2, "no pixels in the measured band")
     for value, count in enumerate(histogram):
         seen += count
         if seen * 2 >= total:
