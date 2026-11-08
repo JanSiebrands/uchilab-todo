@@ -10,7 +10,8 @@
 # second start as before; force-stop, hash equal.
 # Usage: emulator-read-failure.sh <apk> <seed-dir>   (<seed-dir> holds tasks.db from EmulatorSeedTest)
 # Needs `adb root` (emulator only). With SCREENSHOTS=<dir>, case A writes <build>-read-failure.png (interface
-# for S4c, UCH-79; checked by png-not-blank.py like every screenshot).
+# for S4c, UCH-79; checked by png-not-blank.py like every screenshot, the notice must be shown before and after
+# screencap). With SHOT_BUILD/SHOT_SUFFIX the name follows the schema of the screenshots job (emulator-lib.sh).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 apk="$1"
@@ -98,7 +99,7 @@ run_case() {
   wait_read_failure "case $c first start"
   if [ "$c" = A ] && [ -n "${SCREENSHOTS:-}" ]; then
     screen_on
-    shot read-failure
+    shot read-failure "$error_tag"
     log "screenshot written to $SCREENSHOTS"
   fi
   stop_and_compare "case $c after first start" "$before"

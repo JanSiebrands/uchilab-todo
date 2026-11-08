@@ -182,10 +182,14 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
+      # Technical seed for the checks (EmulatorSeedTest) and readable seed per language for the pictures
+      # (ShowcaseSeedTest, plan UCH-81 section 4); both only in app/build, never checked in.
       - run: >-
           ./gradlew --console=plain assembleRelease
           :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
+          --tests de.uchilab.todo.data.ShowcaseSeedTest
           -Puchilab.seedOut="$PWD/app/build/emulator-seed"
+          -Puchilab.showcaseOut="$PWD/app/build/showcase-seed"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

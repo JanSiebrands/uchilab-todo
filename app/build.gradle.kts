@@ -44,6 +44,8 @@ android {
             it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
             // Output dir of EmulatorSeedTest (tools/checks/emulator-tasks.sh); without it the test is skipped.
             providers.gradleProperty("uchilab.seedOut").orNull?.let { dir -> it.systemProperty("uchilab.seedOut", dir) }
+            // Output dir of ShowcaseSeedTest (tools/checks/emulator-showcase.sh); without it the test is skipped.
+            providers.gradleProperty("uchilab.showcaseOut").orNull?.let { dir -> it.systemProperty("uchilab.showcaseOut", dir) }
         }
     }
 

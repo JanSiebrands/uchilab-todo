@@ -5,8 +5,7 @@
 # text), a draft survives the app being killed in the background, and the list (UI task on top, then the
 # seed) is shown after the process end and after a device reboot. Usage: emulator-tasks.sh <apk> <seed-dir>
 # <seed-dir> holds tasks.db, titles.txt (expected titles in list order) and done.txt (title of the done task).
-# Needs `adb root` (emulator only). With SCREENSHOTS=<dir>, screenshots of the list, the input and its hints
-# and the discard dialog are written there (invented data only).
+# Needs `adb root` (emulator only). The screenshots for the feature PR moved to emulator-showcase.sh (UCH-81).
 # Device helpers (one emulator only, every wait with a timeout) come from emulator-lib.sh; the exit code decides.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -32,8 +31,6 @@ trap cleanup EXIT
 action_tag="new_task_action"
 form_tag="new_task_form"
 title_tag="new_task_title"
-title_hint_tag="new_task_title_hint"
-title_counter_tag="new_task_title_counter"
 save_tag="new_task_save"
 discard_dialog_tag="new_task_discard_dialog"
 discard_confirm_tag="new_task_discard_confirm"
@@ -168,27 +165,6 @@ wait_until 30 "after create: typed title not in the title field (focus not in th
 tap "after create" "$save_tag"
 { echo "$ui_title"; cat "$seed/titles.txt"; } >"$expected"
 wait_list "after create"
-
-# Screenshots for the feature PR: list, empty input, title missing, title too long, discard dialog.
-if [ -n "${SCREENSHOTS:-}" ]; then
-  screen_on
-  shot 1-list
-  open_new_task "screenshots"
-  shot 2-input-empty
-  tap "screenshots" "$save_tag"
-  wait_until 30 "screenshots: no hint after saving without a title" shown "$title_hint_tag"
-  shot 3-title-missing
-  type_text "screenshots" "$(python3 -I -c 'print(("Zu-lang-" * 30)[:201])')"
-  wait_until 30 "screenshots: no counter for a too long title" shown "$title_counter_tag"
-  wait_until 30 "screenshots: no hint for a too long title" shown "$title_hint_tag"
-  shot 4-title-too-long
-  back_to_dialog "screenshots"
-  shot 5-discard-dialog
-  tap "screenshots" "$discard_confirm_tag"
-  wait_until 30 "screenshots: input still open after discarding" gone "$form_tag"
-  wait_list "screenshots"
-  log "screenshots written to $SCREENSHOTS"
-fi
 
 # Draft after the app was killed in the background (edge case app switch): am kill only ends a background
 # process and keeps the saved state, unlike force-stop.
