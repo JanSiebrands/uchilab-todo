@@ -297,6 +297,16 @@ class NewTaskScreenTest {
     }
 
     @Test
+    fun `the dialog window exposes its test tags as resource ids`() {
+        show(open("Aufgabe 1") { it.withHints(dialog = true) })
+        val config = node(NewTaskTags.DISCARD_DIALOG).fetchSemanticsNode().config
+        assertTrue(
+            "the dialog window needs testTagsAsResourceId itself, the root one does not reach it",
+            config.getOrNull(SemanticsProperties.TestTagsAsResourceId) == true,
+        )
+    }
+
+    @Test
     fun `without the flag there is no dialog`() {
         show(open("Aufgabe 1"))
         tagged(NewTaskTags.DISCARD_DIALOG).assertCountEquals(0)
