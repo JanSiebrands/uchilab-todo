@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -288,12 +289,15 @@ private fun SaveFailedNotice() {
     }
 }
 
-/** "Keep editing" stands left (the safe choice), "Discard" right; tapping outside or back only closes the dialog. */
+/**
+ * "Keep editing" stands left (the safe choice), "Discard" right; tapping outside or back only closes the dialog.
+ * The dialog lives in its own window, so the root's testTagsAsResourceId does not reach it and is set here again.
+ */
 @Composable
 private fun DiscardDialog(actions: NewTaskActions) {
     AlertDialog(
         onDismissRequest = actions::onDiscardDismiss,
-        modifier = Modifier.testTag(NewTaskTags.DISCARD_DIALOG),
+        modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag(NewTaskTags.DISCARD_DIALOG),
         title = { Text(stringResource(R.string.new_task_discard_title)) },
         text = { Text(stringResource(R.string.new_task_discard_body)) },
         dismissButton = {
