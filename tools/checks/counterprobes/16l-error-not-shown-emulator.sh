@@ -8,7 +8,7 @@ seed="$(realpath "$1")"
 make_copy
 replace app/src/main/kotlin/de/uchilab/todo/ui/tasklist/TaskListViewModel.kt \
   "if (it is TaskReadException) emit(TaskListUiState.ReadFailed) else throw it" \
-  "if (it is TaskReadException) emit(TaskListUiState.Loaded(emptyList())) else throw it"
+  "if (it is TaskReadException) emit(TaskListUiState.Loaded(emptyList(), emptyList())) else throw it"
 expect_green "debug build without the read failure state" ./gradlew "${GRADLE_ARGS[@]}" assembleDebug
 expect_red "read failure shown as empty list (emulator)" "case A first start: read failure notice not shown" \
   "$src/tools/checks/emulator-read-failure.sh" app/build/outputs/apk/debug/app-debug.apk "$seed"
