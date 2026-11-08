@@ -69,7 +69,7 @@ Jede Vorgabe hat eine Kennung, eine Begründung und sagt, wer sie prüft: **Pipe
 ## 4. Exportierte Komponenten und Freigabe an andere Apps
 
 **E1 Nur die Launcher-Aktivität ist exportiert.** Gilt weiter wie in S1 (`ManifestCheck`): kein exportierter `provider`, `service`, `receiver`, keine weitere `activity`. Nicht exportierte Komponenten aus Bibliotheken (z. B. `androidx.startup.InitializationProvider`) sind erlaubt.
-*Warum:* Jede exportierte Komponente ist eine Schnittstelle, über die andere Apps Daten lesen oder schreiben können. Prüft: Pipeline (vorhanden). **Lücke:** Für exportierte Komponenten gibt es noch keine Gegenprobe in `tools/checks/counterprobes/`. Die kommt mit P3.
+*Warum:* Jede exportierte Komponente ist eine Schnittstelle, über die andere Apps Daten lesen oder schreiben können. Prüft: Pipeline (vorhanden). Gegenprobe: `ManifestCheckTest` „additional exported component is a violation“ mit `receiver`, `provider` und `service` (P3).
 
 **E2 Die Launcher-Aktivität nimmt nur `MAIN`/`LAUNCHER` an.** Kein weiterer `intent-filter` (kein `SEND`, `VIEW`, Deep Link), und die App liest keine Extras oder Daten aus dem Start-Intent, um Aufgaben anzulegen oder anzuzeigen.
 *Warum:* Die Aktivität ist exportiert, jede App kann sie starten. Solange sie nichts aus dem Intent übernimmt, kann eine fremde App darüber keine Aufgaben einschleusen oder auslesen. Prüft: Pipeline P3 (Manifest), Review (Code).
@@ -94,7 +94,7 @@ Jede Vorgabe hat eine Kennung, eine Begründung und sagt, wer sie prüft: **Pipe
 
 ## 6. Prüfungen für die Pipeline (Story an CI/CD)
 
-Alle Prüfungen laufen auf den gemergten Manifesten (Debug und Release, außer P1) bzw. auf `app/src/main`, mit je mindestens einer Gegenprobe in `tools/checks/counterprobes/` nach dem Muster von ADR 0002: Der Fehler wird in einer Wegwerf-Kopie eingebaut, die Prüfung muss rot werden **und** die erwartete Meldung ausgeben, der Exit-Code entscheidet. Wie geprüft wird (Erweiterung von `ManifestCheck`, eigenes Skript, Lint-Regel), entscheiden Architekt und CI/CD.
+Alle Prüfungen laufen auf den gemergten Manifesten (Debug und Release, außer P1) bzw. auf `app/src/main`, mit je mindestens einer Gegenprobe. Seit UCH-124 (Regeln aus UCH-116, ADR 0002 Abschnitt „Gegenproben“) ist die Gegenprobe ein Unit-Test der Regel (`ManifestCheckTest`, `BackupRulesCheckTest`, `SourceCheckTest`): Die Regel wird mit einem fehlerhaften Beispiel aufgerufen und muss die erwartete Meldung liefern. Dass die Regeln im Task hängen, zeigt `privacy-check-red.sh`. Der Exit-Code entscheidet. Wie geprüft wird (Erweiterung von `ManifestCheck`, eigenes Skript, Lint-Regel), entscheiden Architekt und CI/CD.
 
 | Nr. | Prüfung | Vorgabe | Gegenprobe (mindestens) |
 |---|---|---|---|
@@ -102,7 +102,7 @@ Alle Prüfungen laufen auf den gemergten Manifesten (Debug und Release, außer P
 | P2 | Kein `android:backupAgent`, kein `hasFragileUserData="true"`, kein `directBootAware="true"` (an `application` und Komponenten) | B2, B3, D3 | je eine: `backupAgent` gesetzt, `hasFragileUserData="true"`, `directBootAware="true"` |
 | P3 | Exportierte Komponenten: Gegenproben für die vorhandene Prüfung; neu: die Launcher-Aktivität hat nur einen `intent-filter` mit `MAIN`/`LAUNCHER` | E1, E2, E3 | exportierter `provider`; exportierter `service`; zweiter `intent-filter` mit `android.intent.action.SEND` an `MainActivity` |
 | P4 | Keine Logging-Aufrufe in `app/src/main` (Liste aus L2) | L1, L2 | `Log.d(...)` in einer Datei in `app/src/main`; `println(...)`; `setQueryCallback` |
-| P5 | Backup-Regeln (vorhanden, `BackupRulesCheck`, Gegenproben 06a bis 06f) | B1 | vorhanden, keine neue nötig |
+| P5 | Backup-Regeln (vorhanden, `BackupRulesCheck`, Unit-Tests in `BackupRulesCheckTest`, früher Gegenproben 06a bis 06f) | B1 | vorhanden, keine neue nötig |
 | P6 | Keine API für externen, geteilten oder Direct-Boot-Speicher in `app/src/main` (Liste aus D2 und D3) | D2, D3 | `getExternalFilesDir(null)`; `createDeviceProtectedStorageContext()` |
 
 Für P4 und P6 gilt: Die Prüfung sucht nach Aufrufen im Quelltext von `app/src/main`, nicht in Tests. Treffer in Kommentaren dürfen die Prüfung rot machen, ein Ausnahme-Mechanismus ist nicht vorgesehen. Wird später eine Ausnahme nötig, ist das ein Anlass für Security.
