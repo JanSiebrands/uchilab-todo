@@ -3,6 +3,8 @@ package de.uchilab.todo.ui.newtask
 import android.content.Context
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertiesAndroid
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -302,7 +304,7 @@ class NewTaskScreenTest {
         val config = node(NewTaskTags.DISCARD_DIALOG).fetchSemanticsNode().config
         assertTrue(
             "the dialog window needs testTagsAsResourceId itself, the root one does not reach it",
-            config.getOrNull(SemanticsProperties.TestTagsAsResourceId) == true,
+            config.getOrNull(SemanticsPropertiesAndroid.TestTagsAsResourceId) == true,
         )
     }
 
