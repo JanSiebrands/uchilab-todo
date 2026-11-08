@@ -65,12 +65,13 @@ class ManifestCheckTest {
 
     @Test
     fun `additional exported component is a violation`() {
-        val violations = ManifestCheck.check(
-            manifest(
-                components = LAUNCHER + """<receiver android:name="com.example.Evil" android:exported="true"/>""",
-            ),
-        )
-        assertTrue(violations.single().contains("com.example.Evil"))
+        // receiver, and provider and service (former counterprobes 12a and 12b, plan UCH-125 section 6).
+        listOf("receiver", "provider", "service").forEach { tag ->
+            val violations = ManifestCheck.check(
+                manifest(components = LAUNCHER + """<$tag android:name="com.example.Evil" android:exported="true"/>"""),
+            )
+            assertTrue("$tag -> $violations", violations.single().contains("com.example.Evil"))
+        }
     }
 
     @Test
