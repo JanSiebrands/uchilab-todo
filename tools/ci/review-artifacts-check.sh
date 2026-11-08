@@ -23,6 +23,7 @@ expected=(
   'build|debug-apk|${{ runner.temp }}/review/apk'
   'build|r8-mapping|${{ runner.temp }}/review/r8'
   'emulator|emulator-logs|app/build/emulator-artifacts'
+  'screenshots|screenshots|app/build/emulator-artifacts'
 )
 
 [ "$(q '.env.REVIEW_SHA')" = '${{ github.event.pull_request.head.sha || github.sha }}' ] \
