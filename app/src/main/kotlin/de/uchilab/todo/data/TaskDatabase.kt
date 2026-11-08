@@ -4,11 +4,11 @@ import android.content.Context
 import androidx.room3.Database
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
-import androidx.sqlite.driver.AndroidSQLiteDriver
 
 /**
  * The task database. Format version 1 (ADR 0003). No destructive fallback and no query callback:
  * a failure must never silently delete tasks or write their content anywhere.
+ * The driver never deletes or replaces an existing file, also not a damaged one.
  */
 @Database(entities = [TaskEntity::class], version = 1, exportSchema = true)
 abstract class TaskDatabase : RoomDatabase() {
@@ -20,7 +20,7 @@ abstract class TaskDatabase : RoomDatabase() {
 
         fun create(context: Context): TaskDatabase =
             Room.databaseBuilder(context.applicationContext, TaskDatabase::class.java, DATABASE_NAME)
-                .setDriver(AndroidSQLiteDriver())
+                .setDriver(KeepFileSQLiteDriver())
                 .build()
     }
 }

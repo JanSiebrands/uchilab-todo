@@ -34,6 +34,10 @@ class CorruptDatabaseTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private var db: TaskDatabase? = null
 
+    private companion object {
+        const val PAGE = 4096L
+    }
+
     private val file: File get() = context.getDatabasePath(TaskDatabase.DATABASE_NAME)
 
     @Before
@@ -68,10 +72,12 @@ class CorruptDatabaseTest {
 
     private fun titlesOf(state: TaskListUiState) = (state as TaskListUiState.Loaded).tasks.map { it.content.title }
 
-    private fun overwritePageTwo() {
+    /** Keeps the header page intact and fills every following page with invented bytes. */
+    private fun overwriteAllPagesAfterTheFirst() {
         RandomAccessFile(file, "rw").use {
-            it.seek(4096)
-            it.write(ByteArray(4096) { i -> (0x5A + i % 7).toByte() })
+            val rest = (it.length() - PAGE).toInt()
+            it.seek(PAGE)
+            it.write(ByteArray(rest) { i -> (0x5A + i % 7).toByte() })
         }
     }
 
@@ -92,7 +98,7 @@ class CorruptDatabaseTest {
         seed("eins", "zwei", "drei")
         File(file.path + "-wal").delete()
         File(file.path + "-shm").delete()
-        overwritePageTwo()
+        overwriteAllPagesAfterTheFirst()
         val bytes = file.readBytes()
 
         val outcome = runCatching { state(open()) }

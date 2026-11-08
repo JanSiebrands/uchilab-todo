@@ -8,11 +8,12 @@ S2 speichert erstmals Daten. Es gelten die Vorgaben von Security ([`docs/sicherh
 ## Entscheidungen
 | Thema | Entscheidung | Grund |
 |---|---|---|
-| Speicher | Room 3 (`androidx.room3`, 3.0.x) mit `AndroidSQLiteDriver` (SQLite des Systems) | AndroidX-Standard, Flow für Änderungen, parametrisierte Abfragen per Annotation (D6), Schema-Export für Migration (S11). Kein `BundledSQLiteDriver`: nativer Code (Security A4). |
+| Speicher | Room 3 (`androidx.room3`, 3.0.x) mit der SQLite des Systems über `KeepFileSQLiteDriver` | AndroidX-Standard, Flow für Änderungen, parametrisierte Abfragen per Annotation (D6), Schema-Export für Migration (S11). Kein `BundledSQLiteDriver`: nativer Code (Security A4). |
 | Annotation-Prozessor | KSP | Room 3 verlangt KSP (Security A3). |
 | Schema-Export | Room-Gradle-Plugin, `schemaDirectory("$projectDir/schemas")`, eingecheckt | Grundlage für Migrationen und die Feldliste (DSGVO P4). |
 | Keine Verschlüsselung | kein SQLCipher, kein `security-crypto` | Security D4. |
-| Kein Destruktiv-Fallback | verboten: `fallbackToDestructiveMigration*`, `allowDataLossOnRecovery()` | Würde bei einem Fehler stillschweigend alle Aufgaben löschen. Migrationen kommen in S11. |
+| Kein Destruktiv-Fallback | verboten: `fallbackToDestructiveMigration*`, `allowDataLossOnRecovery()` | Würde bei einem Fehler stillschweigend alle Aufgaben löschen. Geprüft durch `SourceCheck`. Migrationen kommen in S11. |
+| Treiber | `KeepFileSQLiteDriver` mit eigenem `DatabaseErrorHandler`, der nie löscht; 0 Byte gilt als beschädigt (UCH-80) | Der Standard von Android löscht eine beschädigte Datei beim Öffnen und bei jeder Abfrage und startet leer. Die App zeigt stattdessen den Lesefehler, die Datei bleibt. |
 | Kein Logging | weder `setQueryCallback` noch eigenes Logging in `app/src/main` | Security L2, DSGVO V5. |
 | Kein DI-Framework | `TaskDatabase.create(context)`; Verdrahtung kommt mit S3 | ADR 0001. |
 
@@ -48,5 +49,6 @@ Quelle ist das exportierte Schema unter `app/schemas/`. Die Prüfung gegen `tool
 ## Folgen
 - Die Domain (`de.uchilab.todo.domain`) kennt kein `android.*`/`androidx.*`; Grenzen (200/2000 Grapheme) prüft `TaskContent.of`, der einzige Weg zu gültigem Inhalt (Security D5).
 - Das Repository fängt nur `android.database.SQLException` und meldet `STORAGE_FAILURE` ohne Ausnahme und Text (L3).
+- Fehlt eine Migration, wirft Room `IllegalStateException`; es wird nichts gelöscht. Der Lesefehler dafür kommt in S11.
 - S2 hat keinen Aufrufer in der App; R8 entfernt die Datenbank im Release-Build. Erst S3 prüft Room mit R8 auf dem Emulator.
 - Grapheme zählt `java.text.BreakIterator`; auf alten Android-Versionen kennt ICU neuere Emoji-Folgen evtl. nicht (nur an der Grenze relevant).
