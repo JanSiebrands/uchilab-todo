@@ -208,6 +208,9 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-26.04
+    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -219,6 +222,9 @@ jobs:
   vulnerabilities:
     name: Dependency vulnerability scan
     runs-on: ubuntu-26.04
+    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: tools/checks/vuln-scan-selftest.sh
