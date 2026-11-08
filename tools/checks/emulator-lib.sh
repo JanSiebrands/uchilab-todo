@@ -56,6 +56,50 @@ wait_for_boot() {
   timeout 10 adb shell input keyevent 82 >/dev/null 2>&1 || true
 }
 
+# restart_emulator: replaces a guest reboot (adb reboot) in the screenshots job (UCH-112). On the image with
+# rendering (target default) the emulator process itself died twice during adb reboot and never came back
+# (run 42502889583, both attempts: "device did not come back", then "could not connect to TCP port 5554").
+# Instead the emulator is stopped (sync, adb emu kill) and started again with the same AVD, port and options
+# as android-emulator-runner (EMULATOR_AVD, EMULATOR_OPTIONS from the job). A cold boot of the same AVD keeps
+# /data, so persist.* properties take effect as after a reboot. Up to 3 starts, each with a time limit; if the
+# emulator does not come back, it fails with a clear message, never skips. Output of each start goes to
+# $EMULATOR_LOGS/emulator-restart-<n>.log for the reviewers.
+emulator_port() { echo "${ANDROID_SERIAL#emulator-}"; }
+console_closed() { ! (exec 3<>"/dev/tcp/127.0.0.1/$(emulator_port)") 2>/dev/null; }
+# boot_within <seconds> <pid>: 0 when booted and the package manager answers in time; 1 on timeout or when the
+# emulator process <pid> has ended.
+boot_within() {
+  local end=$((SECONDS + $1)) pid="$2"
+  until booted && pm_ready; do
+    kill -0 "$pid" 2>/dev/null || { log "emulator process $pid has ended"; return 1; }
+    [ "$SECONDS" -lt "$end" ] || { log "no boot within $1 s"; return 1; }
+    sleep 2
+  done
+}
+restart_emulator() {
+  local bin="${ANDROID_HOME:?ANDROID_HOME is not set}/emulator/emulator" avd="${EMULATOR_AVD:?EMULATOR_AVD is not set}"
+  local opts="${EMULATOR_OPTIONS:?EMULATOR_OPTIONS is not set}" attempts="${EMULATOR_RESTARTS:-3}" attempt pid out
+  local -a args
+  read -r -a args <<<"$opts"
+  timeout 30 adb shell sync >/dev/null 2>&1 || true
+  for attempt in $(seq 1 "$attempts"); do
+    timeout 30 adb emu kill >/dev/null 2>&1 || true
+    wait_until 120 "emulator on port $(emulator_port) did not stop" console_closed
+    out="${EMULATOR_LOGS:-$tmp}/emulator-restart-$attempt.log"
+    mkdir -p "$(dirname "$out")"
+    "$bin" -port "$(emulator_port)" -avd "$avd" "${args[@]}" >"$out" 2>&1 </dev/null &
+    pid=$!
+    log "emulator restart $attempt/$attempts (pid $pid, log $(basename "$out"))"
+    if boot_within 420 "$pid"; then
+      timeout 10 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+      timeout 10 adb shell input keyevent 82 >/dev/null 2>&1 || true
+      log "emulator back after restart $attempt/$attempts ($SECONDS s)"
+      return 0
+    fi
+  done
+  fail "emulator did not come back after $attempts restarts (logs emulator-restart-*.log)"
+}
+
 # dump_ui: current window hierarchy into $tmp/window.xml.
 dump_ui() {
   timeout 30 adb shell uiautomator dump /data/local/tmp/window.xml >/dev/null 2>&1 || return 1
