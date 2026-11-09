@@ -252,6 +252,7 @@ class TaskListIntegrationTest {
         composeRule.waitUntil(10_000) { announcement().fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription) == listOf(done) }
         announcement().assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
 
+        composeRule.waitUntil(10_000) { checkboxStates() == listOf(ToggleableState.On) }
         tapCheckboxOf("Aufgabe 1")
         val open = application.getString(R.string.task_status_announce_open, "Aufgabe 1")
         composeRule.waitUntil(10_000) { announcement().fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription) == listOf(open) }
@@ -482,5 +483,100 @@ class TaskListIntegrationTest {
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Aufgabe eins").fetchSemanticsNodes().isNotEmpty() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Aufgabe eins").assertIsFocused()
+    }
+
+    // --- editing opens without focus, also after earlier focus requests ---
+
+    private fun focused(tag: String) =
+        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true
+
+    private fun assertNoFieldFocused() {
+        composeRule.waitForIdle()
+        assertFalse(focused(TaskFormTags.TITLE_FIELD))
+        assertFalse(focused(TaskFormTags.NOTE_FIELD))
+    }
+
+    private fun openNewTask() {
+        composeRule.onNodeWithTag(TaskFormTags.ACTION).performClick()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.TITLE_FIELD) == 1 }
+    }
+
+    private fun close() = composeRule.onNodeWithTag(TaskFormTags.CLOSE).performClick()
+
+    @Test
+    fun `an entry opened after a new task was closed has no field focused`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        openNewTask()
+        close()
+        waitForFormGone()
+
+        openEntry("Aufgabe 1")
+        assertNoFieldFocused()
+    }
+
+    @Test
+    fun `an entry opened after a new task was saved has no field focused`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        openNewTask()
+        replaceTitle("Aufgabe 2")
+        save()
+        waitForFormGone()
+        waitForItems(2)
+
+        openEntry("Aufgabe 1")
+        assertNoFieldFocused()
+    }
+
+    @Test
+    fun `an entry opened after an edit with a rejected save and a corrected save has no field focused`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        openEntry("Aufgabe 1")
+        replaceTitle("")
+        save()
+        composeRule.waitUntil(10_000) { focused(TaskFormTags.TITLE_FIELD) }
+        replaceTitle("Aufgabe eins")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { visibleTitles().contains("Aufgabe eins") }
+
+        openEntry("Aufgabe 2")
+        assertNoFieldFocused()
+    }
+
+    @Test
+    fun `an entry stays without focus after the screen is recreated`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        openNewTask()
+        close()
+        waitForFormGone()
+        openEntry("Aufgabe 1")
+        assertNoFieldFocused()
+
+        scenario!!.recreate()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.TITLE_FIELD) == 1 }
+        assertNoFieldFocused()
+    }
+
+    @Test
+    fun `a new task opened after an edit was closed has the title focused`() {
+        add("Aufgabe 1")
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        close()
+        waitForFormGone()
+
+        openNewTask()
+        composeRule.waitUntil(10_000) { focused(TaskFormTags.TITLE_FIELD) }
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsFocused()
     }
 }
