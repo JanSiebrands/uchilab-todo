@@ -41,8 +41,9 @@ jobs:
       - run: tools/ci/tryout-workflow-check.sh
       # Debug build, unit and UI tests, lint, release build with R8 (unsigned), R8 result check,
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
+      # --warning-mode fail: what Gradle 10 turns into an error is red already now (UCH-68, counterprobe 20a).
       - id: gradle
-        run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+        run: ./gradlew --warning-mode fail assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
       # privacyCheck regenerated app/schemas from the code (KSP + copyRoomSchemas). Red if that changed the
       # checked-in schema, i.e. the field list was checked against a stale schema (DSGVO P4, counterprobe 15c).
       - run: tools/checks/schema-check.sh
