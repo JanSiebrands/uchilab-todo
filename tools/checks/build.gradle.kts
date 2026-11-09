@@ -17,3 +17,6 @@ gradlePlugin {
         }
     }
 }
+
+// UiTitlesShownTest runs the emulator list rule; a change to it must rerun the test (UCH-147).
+tasks.test { inputs.file("ui-titles-shown.py") }

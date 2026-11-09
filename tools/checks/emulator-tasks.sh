@@ -2,8 +2,8 @@
 # Emulator check for S3 (plan UCH-58 section 7) and S4 (plan UCH-63 section 6): tasks written by the S2 data
 # layer (seed from EmulatorSeedTest) are shown in the list (order and grouping: TaskListIntegrationTest, UCH-147).
 # Then a task is created through the UI (adb shell input, nodes found by resource-id = test tag, never by UI
-# text), a draft survives the app being killed in the background, and the list (UI task on top, then the
-# seed) is shown after the process end and after a device reboot. Usage: emulator-tasks.sh <apk> <seed-dir>
+# text), a draft survives the app being killed in the background, and every stored title (seed and UI task)
+# is still shown after the process end and after a device reboot. Usage: emulator-tasks.sh <apk> <seed-dir>
 # <seed-dir> holds tasks.db and titles.txt (the stored titles).
 # Needs `adb root` (emulator only). The screenshots for the feature PR moved to emulator-showcase.sh (UCH-81).
 # Device helpers (one emulator only, every wait with a timeout) come from emulator-lib.sh; the exit code decides.
@@ -41,22 +41,12 @@ draft_title="Draft-$run_id"
 expected="$tmp/expected.txt"
 cp "$seed/titles.txt" "$expected"
 
-# Checks the dump against $expected: every title is shown (in text or content-desc). Order and grouping are
-# covered by TaskListIntegrationTest in the app module (UCH-147); this check only guards that stored tasks
-# survive R8, process end and reboot.
+# Checks the dump against $expected with ui-titles-shown.py (unit test: UiTitlesShownTest): every title is
+# shown. Order and grouping are covered by TaskListIntegrationTest in the app module (UCH-147); this check
+# only guards that stored tasks survive R8, process end and reboot.
 dump_matches() {
   dump_ui || return 1
-  python3 -I - "$tmp/window.xml" "$expected" >"$tmp/match.txt" 2>&1 <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-shown = [n.get("text", "") + "\n" + n.get("content-desc", "") for n in ET.parse(sys.argv[1]).getroot().iter("node")]
-titles = [t for t in open(sys.argv[2], encoding="utf-8").read().splitlines() if t]
-missing = [t for t in titles if not any(t in text for text in shown)]
-if missing:
-    print("missing: " + ", ".join(missing))
-    sys.exit(1)
-print("all titles shown: " + ", ".join(titles))
-PY
+  python3 -I "$here/ui-titles-shown.py" "$tmp/window.xml" "$expected" >"$tmp/match.txt" 2>&1
 }
 
 # field_has <tag> <text>: the field with this tag contains the text.
