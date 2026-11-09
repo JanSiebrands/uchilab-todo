@@ -20,12 +20,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     steps:
-      # Renovate clones the repository itself with RENOVATE_TOKEN. This checkout only provides the wrapper
-      # check script and .github/renovate for npm ci, so GITHUB_TOKEN is not written to .git/config.
+      # Renovate clones the repository itself with RENOVATE_TOKEN. This checkout only provides the wrapper for
+      # gradle/actions/wrapper-validation (the same pinned action as in ci.yml, P3) and .github/renovate for npm ci,
+      # so GITHUB_TOKEN is not written to .git/config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: tools/checks/wrapper-check.sh
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -51,9 +52,10 @@ jobs:
       # Renovate passes only a fixed list of variables to ./gradlew, ANDROID_HOME is not on it. Today's
       # Renovate Gradle commands do not need the SDK; this is a safeguard for future AGP versions (ADR 0002).
       # Only ANDROID_HOME is passed on (customEnvVariables), never exposeAllEnv, so RENOVATE_TOKEN does not
-      # reach Gradle. Fails if the runner has no Android SDK (counterprobe 08 checks this step script).
+      # reach Gradle.
       - name: Pass ANDROID_HOME to Renovate's Gradle commands
-        run: tools/ci/set-renovate-android-home.sh
+        run: |
+          echo "RENOVATE_CUSTOM_ENV_VARIABLES=$(jq -cn --arg sdk "$ANDROID_HOME" '{ANDROID_HOME: $sdk}')" >> "$GITHUB_ENV"
       - name: Run Renovate
         working-directory: .github/renovate
         env:

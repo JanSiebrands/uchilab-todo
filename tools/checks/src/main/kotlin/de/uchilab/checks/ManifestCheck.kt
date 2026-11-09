@@ -69,6 +69,14 @@ object ManifestCheck {
         return application.androidAttr("dataExtractionRules") to application.androidAttr("fullBackupContent")
     }
 
+    /**
+     * A backup rule attribute ([attribute], e.g. `android:dataExtractionRules`) must reference an `@xml/`
+     * resource; [reference] is the value from [backupRuleReferences], null if the attribute is missing.
+     */
+    fun ruleReferenceViolations(attribute: String, reference: String?): List<String> =
+        if (reference != null && reference.startsWith("@xml/")) emptyList()
+        else listOf("$attribute must reference an @xml resource (found: ${reference ?: "missing"})")
+
     private fun permissionViolations(root: Element, allowed: Set<String>): List<String> =
         listOf("uses-permission", "uses-permission-sdk-23").flatMap { tag ->
             val nodes = root.getElementsByTagName(tag)

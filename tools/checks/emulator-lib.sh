@@ -157,8 +157,8 @@ screen_on() {
 # shot <name> [<tag>]: screenshot (only call with SCREENSHOTS set). File name: with SHOT_BUILD set
 # $SCREENSHOTS/<SHOT_BUILD>-<name><SHOT_SUFFIX>.png (schema <build>-<state>-<light|dark>-<de|en>.png of the
 # screenshots job, plan UCH-81 section 2), otherwise $SCREENSHOTS/<build>-<name>.png as before. With a tag,
-# the node with this resource-id must be in the dump directly before and directly after screencap, so the
-# picture shows that state and not one before or after it.
+# the node with this resource-id must be in the dump directly before screencap (operation, not a check: whether
+# a picture is right, the designer and the PO judge by looking at it, UCH-116 R2).
 shot() {
   local file
   if [ -n "${SHOT_BUILD:-}" ]; then
@@ -172,11 +172,8 @@ shot() {
   # Only on an image with rendering (screenshots job, target default): on aosp_atd both screencap and the
   # emulator host give a single colour although the UI is there (runs 42435169228, 42436517057, UCH-65).
   timeout 30 adb exec-out screencap -p >"$file" || fail "screenshot $1 failed"
-  if [ -n "${2:-}" ]; then shown "$2" || fail "screenshot $1: wrong state, $2 not shown after screencap"; fi
   [ -s "$file" ] || fail "screenshot $1 empty"
-  # A display that is off gives a black frame of the right size; only a picture with content counts.
-  python3 -I "$here/png-not-blank.py" "$file" || fail "screenshot $1 blank ($(display_state))"
-  log "screenshot $(basename "$file")${2:+ (state $2 before and after)}"
+  log "screenshot $(basename "$file")${2:+ (state $2 before)} ($(display_state))"
 }
 
 # wait_process_gone: waits up to 30 s until pidof answers "no such process" (exit 1). A hanging adb (timeout,

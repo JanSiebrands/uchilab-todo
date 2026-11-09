@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# Runs inside the screenshots job (UCH-65, plan UCH-81 section 1). First the release check of emulator-tasks.sh
-# and counterprobe 16j: only this image has a keyboard app, so only here the check "keyboard open" (UCH-65)
-# runs. Then the screenshots for the feature PR, all in the release build with R8: per device language (en,
-# de; persist.sys.locale and emulator restart, read back; UCH-112) and per mode (light, dark; cmd uimode night, read back)
-# emulator-showcase.sh (empty state, list, input states, 200 % font, landscape) and emulator-read-failure.sh
-# with SCREENSHOTS (all three cases, case A gives the read failure picture). Then counterprobes 16s and 16w
-# (discard dialog opened by key must fail with "focused:"; 16u and 16v need no emulator, job counterprobes), 16x
-# (emulator that does not come back after the restart must fail, UCH-112) and
-# screenshots-check.sh (exactly the 22 names of screenshots-expected.txt, schema, content, theme).
+# Runs inside the screenshots job (UCH-65, plan UCH-81 section 1, plan UCH-125 section 4): the screenshots for
+# the feature PR, all in the release build with R8: per device language (en, de; persist.sys.locale and emulator
+# restart; UCH-112) and per mode (light, dark; cmd uimode night) emulator-showcase.sh (empty state, list, input
+# states, 200 % font, landscape) and emulator-read-failure.sh with SCREENSHOTS (case A gives the read failure
+# picture). Evidence, not a check (UCH-116 R2): a language or mode read back differently only goes to the log;
+# the step screenshots-check.sh in ci.yml checks that every expected file is there and not empty.
 # Only invented data. Each step is limited to 10 minutes; the exit code decides.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -24,10 +21,6 @@ name=release
 tmp="$(mktemp -d)"
 source "$here/emulator-lib.sh"
 select_emulator
-log "step: emulator-tasks.sh and 16j ($SECONDS s)"
-timeout 600 "$here/emulator-tasks.sh" "$apk" "$build/emulator-seed"
-timeout 600 "$here/counterprobes/16j-keyboard-closed-emulator.sh" "$apk" "$build/emulator-seed"
-
 rm -rf "$shots"
 for lang in en de; do
   locale="$([ "$lang" = de ] && echo de-DE || echo en-US)"
@@ -38,13 +31,13 @@ for lang in en de; do
   restart_emulator
   become_root
   now="$(timeout 10 adb shell getprop persist.sys.locale | tr -d '\r')"
-  [ "$now" = "$locale" ] || fail "device language: set $locale, read back $now"
+  [ "$now" = "$locale" ] || log "note: device language set $locale, read back $now"
   log "device language $now (read back)"
   for mode in light dark; do
     night="$([ "$mode" = dark ] && echo yes || echo no)"
     timeout 10 adb shell cmd uimode night "$night" >/dev/null || fail "cmd uimode night $night failed"
     now="$(timeout 10 adb shell cmd uimode night | tr -d '\r')"
-    [ "$now" = "Night mode: $night" ] || fail "mode: set $night, read back $now"
+    [ "$now" = "Night mode: $night" ] || log "note: mode set $night, read back $now"
     log "step: $mode-$lang ($now, read back) showcase ($SECONDS s)"
     timeout 600 env SCREENSHOTS="$shots" "$here/emulator-showcase.sh" "$apk" "$build/showcase-seed"
     log "step: $mode-$lang read failure ($SECONDS s)"
@@ -53,13 +46,5 @@ for lang in en de; do
   done
 done
 
-log "step: 16s ($SECONDS s)"
-timeout 600 "$here/counterprobes/16s-wrong-state-emulator.sh" "$apk" "$build/showcase-seed"
-log "step: 16w ($SECONDS s)"
-timeout 600 "$here/counterprobes/16w-dialog-by-key-emulator.sh" "$apk" "$build/showcase-seed"
-log "step: 16x ($SECONDS s)"
-timeout 600 "$here/counterprobes/16x-emulator-not-back-emulator.sh"
-log "step: screenshots-check.sh ($SECONDS s)"
-timeout 600 "$here/screenshots-check.sh" "$shots"
 rm -rf "$tmp"
 echo "emulator-screenshots: OK ($SECONDS s)"

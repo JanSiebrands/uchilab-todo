@@ -28,7 +28,7 @@ flowchart LR
 ### V2 Datenminimierung: nur die genannten Felder
 **Vorgabe:** Gespeichert werden nur die fünf Felder aus der Ausgangslage. Kein Änderungsverlauf, keine weiteren Zeitstempel, keine Geräte-, Nutzungs- oder Standortdaten, keine Statistik. Jedes weitere gespeicherte Feld, auch Einstellungen, ist ein Anlass für DSGVO (V7).
 **Begründung:** Was nicht gespeichert wird, muss nicht geschützt, erklärt oder gelöscht werden (Art. 5 Abs. 1 lit. c).
-**Prüfung:** Pipeline (P4, neu): Das gespeicherte Schema wird maschinenlesbar abgelegt und gegen eine Liste erlaubter Felder im Repo geprüft. Wie das Schema maschinenlesbar wird (z. B. Room-Schema-Export), entscheidet der Architekt im Plan von S2. Ein neues Feld ohne Eintrag in der Liste macht die Pipeline rot; die Liste ändert nur, wer DSGVO gefragt hat.
+**Prüfung:** Review (P4, seit UCH-124): Das Schema wird mit dem Room-Schema-Export unter `app/schemas/` abgelegt. Die Liste der gespeicherten Felder steht in `docs/datenschutz/gespeicherte-felder.md` und wird bei jeder Schema-Änderung im selben PR nachgezogen; das sehe ich in meiner Stufe. Eine Pipeline-Prüfung der Feldliste gibt es nicht mehr (Regeln aus UCH-116, ADR 0002 Entscheidung 10).
 
 ### V3 „Nur lokal“: kein Backup, kein Gerätetransfer, keine Weitergabe
 **Vorgabe:**
@@ -36,7 +36,7 @@ flowchart LR
 - Keine Internet-Berechtigung, keine Netzwerk-Bibliothek, keine Analytics-, Crash- oder Werbe-SDKs (bestehende Prüfungen).
 - In diesem Feature verlassen Inhalte die App auf keinem Weg: kein Teilen-Intent, kein Content- oder File-Provider, keine Benachrichtigung, kein Widget, keine automatische Kopie in die Zwischenablage.
 **Begründung:** Board-Entscheidung: „Nur lokal“ gilt auch für System-Backups, Backup aus ist ok, Export kommt später. Ein Backup oder Transfer würde Freitext (möglicherweise Gesundheitsdaten) zu Google bzw. auf ein anderes Gerät bringen, ohne dass der Nutzer das in der App entschieden hat. Folge für Nutzer: Beim Gerätewechsel sind die Aufgaben nicht mehr da (siehe Vorschlag in V6).
-**Prüfung:** Pipeline, besteht schon: `BackupRulesCheck` und Berechtigungs-Allowlist in `privacyCheck` mit den Gegenproben 02 und 06a bis 06f. Exportierte Komponenten prüft Security.
+**Prüfung:** Pipeline, besteht schon: `BackupRulesCheck` und Berechtigungs-Allowlist in `privacyCheck`, abgesichert durch ihre Unit-Tests (`BackupRulesCheckTest`, `ManifestCheckTest`, früher Gegenproben 02 und 06a bis 06f) und `privacy-check-red.sh`. Exportierte Komponenten prüft Security.
 
 ### V4 Löschen
 **Vorgabe:**
@@ -63,7 +63,7 @@ flowchart LR
 
 ### V7 Anlässe für eine DSGVO-Prüfung
 Eine Story ist Anlass für DSGVO, wenn sie eines davon enthält:
-1. ein neues gespeichertes Feld oder einen neuen Speicherort, auch für Einstellungen (V2, Pipeline P4 wird rot),
+1. ein neues gespeichertes Feld oder einen neuen Speicherort, auch für Einstellungen (V2, Regel P4 unten),
 2. eine Änderung an `allowBackup`, `backup_rules.xml` oder `data_extraction_rules.xml`,
 3. eine neue Berechtigung (Allowlist-Änderung),
 4. Log-Ausgaben oder eine Änderung an den Prüfungen P2 bis P4,
@@ -72,15 +72,16 @@ Eine Story ist Anlass für DSGVO, wenn sie eines davon enthält:
 7. Texte zum Datenschutz oder eine Veröffentlichung,
 8. alles mit Konto, Sync oder Server (liegt zusätzlich bei Jan).
 
-## Prüfungen für die Pipeline (Story an CI/CD, je mit Gegenprobe als Skript)
+## Prüfungen für die Pipeline (Story an CI/CD)
+Seit UCH-124 (Regeln aus UCH-116): Die Gegenprobe einer Prüfregel ist ihr Unit-Test, nicht mehr je ein Skript (ADR 0002, Abschnitt „Gegenproben“).
 | Nr. | Prüfung | Gegenprobe (muss rot werden) | Stand |
 |---|---|---|---|
-| P1 | Backup-Regeln und Berechtigungs-Allowlist (`privacyCheck`) | 02, 06a bis 06f | besteht, keine Änderung |
-| P2 | Keine Log-Aufrufe in `app/src/main` (`android.util.Log`, `println(`, `printStackTrace(`, Logging-Bibliotheken) | `Log.d("x", title)` in eine Klasse unter `app/src/main` einbauen | neu |
-| P3 | Keine Speicher-APIs außerhalb des app-privaten internen Speichers in `app/src/main` (Liste aus V1) | Aufruf von `getExternalFilesDir(null)` einbauen; zweite Gegenprobe mit `createDeviceProtectedStorageContext()` | neu |
-| P4 | Gespeichertes Schema nur mit erlaubten Feldern | Ein zusätzliches Feld zum Aufgaben-Typ hinzufügen | neu, Form nach Plan des Architekten |
+| P1 | Backup-Regeln und Berechtigungs-Allowlist (`privacyCheck`) | `BackupRulesCheckTest`, `ManifestCheckTest` | besteht |
+| P2 | Keine Log-Aufrufe in `app/src/main` (`android.util.Log`, `println(`, `printStackTrace(`, Logging-Bibliotheken) | `SourceCheckTest` (`Log.d` und alle weiteren Fälle) | besteht |
+| P3 | Keine Speicher-APIs außerhalb des app-privaten internen Speichers in `app/src/main` (Liste aus V1) | `SourceCheckTest` (`getExternalFilesDir`, `createDeviceProtectedStorageContext` und weitere) | besteht |
+| P4 | Gespeicherte Felder: keine Pipeline-Prüfung, sondern Anlass im Review (seit UCH-124). Berührt der Diff einer Story `app/schemas/**` oder eine Klasse mit `@Entity`, `@Database` oder `@Dao`, ist das ein Anlass für Security und DSGVO. Der Architekt prüft das in jedem Story-Review mit `git diff --name-only <merge-base> <sha> -- app/schemas` und `git grep -lE '@(Entity\|Database\|Dao)\b' <sha> -- app/src/main` im Abgleich mit dem Diff. Fehlt dann das Unter-Issue für Security und DSGVO, ist das **blockierend**. Der PO nennt den Anlass im Feature-Issue unter „gespeicherte Daten“. | – | Review |
 
-P2 und P3 sind Textprüfungen. Der Architekt kann eine andere Umsetzung wählen (z. B. Lint-Regel), solange die Gegenprobe als Skript läuft und der Exit-Code entscheidet. P2 bis P4 müssen spätestens laufen, bevor der Feature-PR an Jan geht.
+P2 und P3 sind Textprüfungen in `SourceCheck`, der Exit-Code von `privacyCheck` entscheidet.
 
 ## Was in S2 umgesetzt werden muss
 - V1, V2 (Feldliste und P4-Grundlage), V3 (keine Änderung, nur nicht verschlechtern), V5 einschließlich `toString()`-Test.

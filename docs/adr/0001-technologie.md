@@ -36,12 +36,15 @@ GitHub Actions (`.github/workflows/ci.yml`) bei Pull Request und Push auf `main`
 | Unit- und UI-Tests | `testDebugUnitTest` | – |
 | Lint (Warnungen sind Fehler) | `lint` | – |
 | Manifest und Abhängigkeiten | `privacyCheck` (Gradle-Plugin in `tools/checks`) | `tools/checks/src/test` |
-| Secret-Scan (Arbeitsbaum und Historie) | gitleaks, Version und SHA-256 fest in `tools/checks/ensure-tools.sh` | `secret-scan-selftest.sh` |
-| Schwachstellen der Abhängigkeiten | osv-scanner im Offline-Modus (nur die Advisory-Datenbank wird geladen, die Abhängigkeitsliste verlässt den Rechner nicht), Eingabe `app/gradle.lockfile` | `vuln-scan-selftest.sh` |
+| Gradle-Wrapper | offizielle Action `gradle/actions/wrapper-validation`, auf Commit-SHA gepinnt, einmal im Job `build` | Standardwerkzeug |
+| Secret-Scan (Arbeitsbaum und Historie) | offizielles Image `ghcr.io/gitleaks/gitleaks`, über Tag und Digest gepinnt, Regeln in `tools/checks/gitleaks.toml` | Standardwerkzeug |
+| Schwachstellen der Abhängigkeiten | osv-scanner im Offline-Modus (nur die Advisory-Datenbank wird geladen, die Abhängigkeitsliste verlässt den Rechner nicht), offizielles Image `ghcr.io/google/osv-scanner`, über Tag und Digest gepinnt, Eingabe `app/gradle.lockfile`, aufgeteilt von `tools/checks/vuln-scan.sh` | Standardwerkzeug |
 
 `privacyCheck` prüft die *gemergten* Manifeste (Debug und Release): keine Berechtigung `INTERNET` oder `ACCESS_NETWORK_STATE`, kein `usesCleartextTraffic`, `allowBackup` ist `false`, keine exportierten Komponenten außer `MainActivity` (Ausnahmen: Komponenten mit Berechtigung `DUMP`, z. B. der Profile-Installer von AndroidX, und im Debug-Build die Test-Hilfsaktivität von `ui-test-manifest`). Alle auflösbaren Classpaths werden gegen eine Allowlist von Gruppen geprüft: `allowlist.txt` für alles, was in die App kommt, `allowlist-test.txt` zusätzlich nur für Test-Classpaths. Die Denylist (`denylist.txt`) liefert nur die klare Fehlermeldung für bekannte Tracker.
 
 Der Schwachstellen-Scan lässt den Build nur bei Funden in Bibliotheken scheitern, die in der App landen. Funde in Test- und Build-Werkzeugen werden gemeldet, brechen aber nicht ab. Bekannte Einschränkung: Neu veröffentlichte Advisories können einen unveränderten Pull Request rot machen; das ist gewollt.
+
+Seit UCH-124 gilt: Gibt es ein Standardwerkzeug oder eine offizielle Action, wird sie genutzt, ohne Selbsttest (Regeln aus UCH-116, ADR 0002, Ergänzung UCH-124).
 
 Branch-Protection und Required Checks setzt Jan.
 

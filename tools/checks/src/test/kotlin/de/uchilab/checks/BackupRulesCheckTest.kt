@@ -56,6 +56,8 @@ class BackupRulesCheckTest {
     @Test
     fun `empty section backs up every domain`() {
         assertEquals(BackupRulesCheck.DOMAINS.size, BackupRulesCheck.checkDataExtractionRules(extraction(cloud = "")).size)
+        // Same for device transfer (former counterprobe 06b, plan UCH-125 section 6).
+        assertEquals(BackupRulesCheck.DOMAINS.size, BackupRulesCheck.checkDataExtractionRules(extraction(transfer = "")).size)
     }
 
     @Test

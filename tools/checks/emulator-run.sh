@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Runs inside the emulator job (point 7): debug and release (R8) start, then the counterprobe without
-# launcher entry. Then the S3 check (plan UCH-58 section 7): seeded tasks shown after start, process end and
-# reboot, debug and release, with its counterprobes; extended for S4 (plan UCH-63 section 6): task created
-# through the UI, draft after process kill, done task at its place, with counterprobes 16e-16h. The screenshots
-# for the feature PR come from emulator-screenshots.sh in a job of its own (aosp_atd renders no picture).
+# Runs inside the emulator job (plan UCH-125 section 4): debug and release (R8) start (app-start.sh), the tasks
+# check (emulator-tasks.sh: seeded tasks after start, process end and reboot, task created through the UI) and
+# the read failure check (emulator-read-failure.sh: a damaged database is never deleted), each debug and
+# release. Only with RUN_COUNTERPROBE=true (path filter, tools/ci/pipeline-changed.sh) counterprobe 16b.
 # Each step is limited to 10 minutes. The exit code decides.
 # Expects the seed in app/build/emulator-seed (EmulatorSeedTest, see ci.yml).
 set -euo pipefail
@@ -19,16 +18,13 @@ seed="$here/../../app/build/emulator-seed"
 step() { echo "::group::$*"; timeout 600 "$@"; echo "::endgroup::"; }
 step "$here/app-start.sh" "$apks/debug/app-debug.apk"
 step "$here/app-start.sh" "$apks/release/app-release-unsigned.apk"
-step "$here/counterprobes/07b-launcher-missing-emulator.sh"
 step "$here/emulator-tasks.sh" "$apks/debug/app-debug.apk" "$seed"
 step "$here/emulator-tasks.sh" "$apks/release/app-release-unsigned.apk" "$seed"
-step "$here/counterprobes/16a-seed-missing-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
-step "$here/counterprobes/16b-deleted-after-reboot-emulator.sh" "$apks/release/app-release-unsigned.apk" "$seed"
-step "$here/counterprobes/16c-order-swapped-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
-step "$here/counterprobes/16d-r8-breaks-room-emulator.sh" "$seed"
-step "$here/counterprobes/16e-pidof-hangs-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
-step "$here/counterprobes/16e-ui-task-lost-emulator.sh" "$apks/release/app-release-unsigned.apk" "$seed"
-step "$here/counterprobes/16f-save-not-tapped-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
-step "$here/counterprobes/16g-force-stop-instead-of-kill-emulator.sh" "$apks/debug/app-debug.apk" "$seed"
-step "$here/counterprobes/16h-done-task-hidden-emulator.sh" "$seed"
-echo "emulator-run: all emulator checks and counterprobes OK"
+step "$here/emulator-read-failure.sh" "$apks/debug/app-debug.apk" "$seed"
+step "$here/emulator-read-failure.sh" "$apks/release/app-release-unsigned.apk" "$seed"
+if [ "${RUN_COUNTERPROBE:-false}" = true ]; then
+  step "$here/counterprobes/16b-deleted-after-reboot-emulator.sh" "$apks/release/app-release-unsigned.apk" "$seed"
+else
+  echo "emulator-run: counterprobe 16b skipped (no change to tools/, .github/ or the Gradle configuration)"
+fi
+echo "emulator-run: all emulator checks OK"

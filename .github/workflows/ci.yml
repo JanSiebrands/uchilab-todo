@@ -26,27 +26,19 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Rules of the reviewer artifacts below and in the emulator job (UCH-69).
-      - run: tools/ci/review-artifacts-check.sh
-      # No Kotlin daemon and no long idle Gradle daemon on the shared machine (UCH-69).
-      - run: tools/ci/gradle-daemon-check.sh
-      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
-      - run: tools/checks/wrapper-check.sh
+      # Validates the wrapper JAR against the published checksums before the first ./gradlew call (ADR 0001). Once
+      # per run, here in a required check; the other jobs run in parallel without it (plan UCH-125 section 3).
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      # Rules of the job tryout-apk (ADR 0004): needs all other jobs, pull requests only, upload last, no secret.
-      - run: tools/ci/tryout-workflow-check.sh
       # Debug build, unit and UI tests, lint, release build with R8 (unsigned), R8 result check,
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
-      # --warning-mode fail: what Gradle 10 turns into an error is red already now (UCH-68, counterprobe 20a).
+      # --warning-mode fail: what Gradle 10 turns into an error is red already now (UCH-68).
       - id: gradle
         run: ./gradlew --warning-mode fail assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
-      # privacyCheck regenerated app/schemas from the code (KSP + copyRoomSchemas). Red if that changed the
-      # checked-in schema, i.e. the field list was checked against a stale schema (DSGVO P4, counterprobe 15c).
-      - run: tools/checks/schema-check.sh
       # Reviewers read this run instead of building themselves (UCH-66): reports, debug APK and R8 mapping,
       # also after a red build. Build outputs only, no signing key, no secret (the repository is public).
       - if: always()
@@ -80,22 +72,41 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
-      - run: tools/checks/wrapper-check.sh
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          fetch-depth: 0
+      # Counterprobe scripts run only if tools/, .github/ or the Gradle configuration changed (UCH-116 R1b).
+      # A skipped step keeps the job green; the job name is a required check and stays (ruleset, Jan).
+      - id: filter
+        run: tools/ci/pipeline-changed.sh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+      - if: steps.filter.outputs.changed == 'true'
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - run: tools/checks/counterprobes/run-all.sh
+      # The rule classes have unit tests (job build); this shows that all three are wired into privacyCheck.
+      - if: steps.filter.outputs.changed == 'true'
+        run: tools/checks/counterprobes/privacy-check-red.sh
 
   emulator:
     name: App start on emulator (debug and release with R8)
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
-      - run: tools/checks/wrapper-check.sh
+        with:
+          fetch-depth: 0
+      # Counterprobe scripts run only if tools/, .github/ or the Gradle configuration changed (UCH-116 R1b).
+      # A skipped step keeps the job green; the job name is a required check and stays (ruleset, Jan).
+      - id: filter
+        run: tools/ci/pipeline-changed.sh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -127,7 +138,7 @@ jobs:
           emulator-build: "16740729"
           script: |
             tools/checks/emulator-versions.sh
-            tools/checks/emulator-run.sh
+            RUN_COUNTERPROBE=${{ steps.filter.outputs.changed }} tools/checks/emulator-run.sh
       # Logs written by tools/checks/emulator-run.sh (logcat), also after a red run.
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -139,52 +150,24 @@ jobs:
 
   # S4b (UCH-86): a damaged database is never deleted and the read failure notice shows, debug and release (R8),
   # with counterprobes 16k-16n. A job of its own: the emulator job already takes about 21 minutes.
-  emulator-read-failure:
-    name: Read failure on emulator (debug and release with R8)
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
-      - run: tools/checks/wrapper-check.sh
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-      # Case C starts from the seed (EmulatorSeedTest), only in app/build/emulator-seed, never checked in.
-      - run: >-
-          ./gradlew --console=plain assembleDebug assembleRelease
-          :app:testDebugUnitTest --tests de.uchilab.todo.data.EmulatorSeedTest
-          -Puchilab.seedOut="$PWD/app/build/emulator-seed"
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        with:
-          api-level: 34
-          target: aosp_atd
-          arch: x86_64
-          script: tools/checks/emulator-read-failure-run.sh
-      # Logs written by tools/checks/emulator-read-failure-run.sh (logcat), also after a red run.
-      - if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: read-failure-logs-${{ env.REVIEW_SHA }}
-          path: app/build/emulator-artifacts
-          retention-days: 14
-          if-no-files-found: error
-
-  # Screenshots for the feature PR (UCH-65). aosp_atd renders no picture (screencap and the emulator host give a
-  # single colour), so this job uses the full image with rendering; it runs the whole release check again with
-  # SCREENSHOTS set. A blank screenshot turns the job red (png-not-blank.py, counterprobe 16i).
+  # Screenshots for the feature PR (UCH-65), evidence, not a check (UCH-116 R2): checked is only that every
+  # expected file is there and not empty. aosp_atd renders no picture (screencap and the emulator host give a
+  # single colour), so this job uses the full image with rendering.
   screenshots:
     name: Screenshots for the pull request (release with R8)
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: tools/checks/wrapper-check.sh
+        with:
+          fetch-depth: 0
+      # Counterprobe scripts run only if tools/, .github/ or the Gradle configuration changed (UCH-116 R1b).
+      # A skipped step keeps the job green; the job name is a required check and stays (ruleset, Jan).
+      - id: filter
+        run: tools/ci/pipeline-changed.sh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -207,7 +190,11 @@ jobs:
       # revision cannot be pinned, emulator-versions.sh logs it (UCH-112). AVD name and options are set here and
       # passed on, because the language switch starts the emulator again with exactly these (restart_emulator
       # in emulator-lib.sh instead of adb reboot, during which the emulator died; UCH-112).
-      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      # Fails the environment (emulator does not start or dies), the step runs once more (R2). If the second try
+      # is red as well, the job is red; that goes into the PR text, nobody stabilises the job within the feature.
+      - id: shots
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           EMULATOR_AVD: test
           EMULATOR_OPTIONS: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
@@ -221,6 +208,24 @@ jobs:
           script: |
             tools/checks/emulator-versions.sh
             tools/checks/emulator-screenshots.sh
+      - if: steps.shots.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          EMULATOR_AVD: test
+          EMULATOR_OPTIONS: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          emulator-build: "16740729"
+          avd-name: ${{ env.EMULATOR_AVD }}
+          emulator-options: ${{ env.EMULATOR_OPTIONS }}
+          script: |
+            tools/checks/emulator-versions.sh
+            tools/checks/emulator-screenshots.sh
+      - run: tools/checks/screenshots-check.sh app/build/emulator-artifacts/screenshots
+      - if: steps.filter.outputs.changed == 'true'
+        run: tools/checks/counterprobes/screenshots-check-red.sh
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -229,38 +234,53 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # Official images, pinned by tag and digest, no download from GitHub releases (plan UCH-125 section 3).
+  # Renovate's github-actions manager documents that it extracts docker:// references in uses (depType
+  # "docker"); that it also updates the digest there is not stated explicitly. Read at the first Renovate run
+  # on main: if no update PR for these images appears after a new release, update tag and digest by hand.
   secrets:
     name: Secret scan
     runs-on: ubuntu-26.04
-    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - run: tools/checks/secret-scan-selftest.sh
-      - run: tools/checks/secret-scan.sh
-      - run: tools/checks/secret-scan.sh --history
+      - uses: docker://ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+        with:
+          args: dir --no-banner --redact --config tools/checks/gitleaks.toml .
+      - uses: docker://ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+        # git in the container runs as another user than the owner of the workspace ("dubious ownership").
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: "*"
+        with:
+          args: git --no-banner --redact --config tools/checks/gitleaks.toml .
 
   vulnerabilities:
     name: Dependency vulnerability scan
     runs-on: ubuntu-26.04
-    # Read-only token for the fallback download of the scanners in ensure-tools.sh (gh release download).
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: tools/checks/vuln-scan-selftest.sh
       - run: tools/checks/vuln-scan.sh
+      # Libraries that end up in the app: a finding turns the job red (ADR 0002).
+      - uses: docker://ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0
+        with:
+          args: scan source --offline-vulnerabilities --download-offline-databases --lockfile=build/osv/shipped/gradle.lockfile
+      # Test and build tool libraries are not shipped in the app: informational only, update when convenient.
+      - continue-on-error: true
+        uses: docker://ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0
+        with:
+          args: scan source --offline-vulnerabilities --download-offline-databases --lockfile=build/osv/other/gradle.lockfile
 
-  # APK to try out for every pull request (ADR 0004). Runs only if all other jobs are green; the upload is the
-  # last step before the summary, after the install and start test of exactly this file on API = minSdk.
-  # Signing key per pull request in the Actions cache (no secret). Checked by tools/ci/tryout-workflow-check.sh.
+  # APK to try out for every pull request (ADR 0004). Runs only if all required jobs are green; not after the
+  # screenshots (both are evidence, UCH-116 R2). The upload is the last step before the summary, after the
+  # install and start test of exactly this file on API = minSdk. Signing key per pull request in the Actions
+  # cache (no secret).
   tryout-apk:
     name: APK to try out (pull requests only)
     if: github.event_name == 'pull_request'
-    needs: [build, counterprobes, emulator, emulator-read-failure, screenshots, secrets, vulnerabilities]
+    needs: [build, counterprobes, emulator, secrets, vulnerabilities]
     runs-on: ubuntu-26.04
     # Two runs of the same pull request must not both create a key: wait instead of cancelling.
     concurrency:
@@ -272,8 +292,6 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Validate the wrapper before the first ./gradlew call, so a manipulated JAR never runs.
-      - run: tools/checks/wrapper-check.sh
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
