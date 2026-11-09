@@ -1,7 +1,0 @@
-# Fields stored on the device (DSGVO V2). Change only after asking DSGVO (V7).
-# One line per field: table.column, exactly as in the Room schema under app/schemas (checked by privacyCheck).
-task.id
-task.title
-task.note
-task.created_at
-task.status

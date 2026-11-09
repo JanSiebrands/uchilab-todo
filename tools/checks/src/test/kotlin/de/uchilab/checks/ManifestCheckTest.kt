@@ -162,6 +162,17 @@ class ManifestCheckTest {
     }
 
     @Test
+    fun `backup rule reference must be an xml resource`() {
+        val attribute = "android:dataExtractionRules"
+        assertEquals(emptyList<String>(), ManifestCheck.ruleReferenceViolations(attribute, "@xml/rules"))
+        listOf(null, "@raw/rules", "rules", "").forEach { reference ->
+            val violations = ManifestCheck.ruleReferenceViolations(attribute, reference)
+            assertEquals("reference $reference", 1, violations.size)
+            assertTrue("reference $reference", violations.single().contains(attribute))
+        }
+    }
+
+    @Test
     fun `debuggable is a violation in the release manifest only`() {
         val xml = manifest(applicationAttributes = """android:allowBackup="false" android:debuggable="true"""")
         assertTrue(ManifestCheck.check(xml, release = true).single().contains("Security R1"))
