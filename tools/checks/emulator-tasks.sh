@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Emulator check for S3 (plan UCH-58 section 7) and S4 (plan UCH-63 section 6): tasks written by the S2 data
-# layer (seed from EmulatorSeedTest) are shown in the list, in the expected order, the done task at its place.
+# layer (seed from EmulatorSeedTest) are shown in the list (order and grouping: TaskListIntegrationTest, UCH-147).
 # Then a task is created through the UI (adb shell input, nodes found by resource-id = test tag, never by UI
-# text), a draft survives the app being killed in the background, and the list (UI task on top, then the
-# seed) is shown after the process end and after a device reboot. Usage: emulator-tasks.sh <apk> <seed-dir>
-# <seed-dir> holds tasks.db, titles.txt (expected titles in list order) and done.txt (title of the done task).
+# text), a draft survives the app being killed in the background, and every stored title (seed and UI task)
+# is still shown after the process end and after a device reboot. Usage: emulator-tasks.sh <apk> <seed-dir>
+# <seed-dir> holds tasks.db and titles.txt (the stored titles).
 # Needs `adb root` (emulator only). The screenshots for the feature PR moved to emulator-showcase.sh (UCH-81).
 # Device helpers (one emulator only, every wait with a timeout) come from emulator-lib.sh; the exit code decides.
 set -euo pipefail
@@ -25,7 +25,6 @@ trap cleanup EXIT
 
 [ -s "$seed/tasks.db" ] || fail "seed $seed/tasks.db missing (EmulatorSeedTest with -Puchilab.seedOut)"
 [ -s "$seed/titles.txt" ] || fail "seed $seed/titles.txt missing"
-[ -s "$seed/done.txt" ] || fail "seed $seed/done.txt missing"
 
 # Test tags of the app (NewTaskTags), used as resource-id thanks to testTagsAsResourceId.
 action_tag="new_task_action"
@@ -38,47 +37,16 @@ discard_confirm_tag="new_task_discard_confirm"
 run_id="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 ui_title="UI-$run_id"
 draft_title="Draft-$run_id"
-# Expected list, top to bottom; grows by the UI task once it is created.
+# Expected titles; grows by the UI task once it is created.
 expected="$tmp/expected.txt"
 cp "$seed/titles.txt" "$expected"
 
-# Checks the dump against $expected (repository order, newest first): the done task (done.txt) is shown, all
-# titles present (in text or content-desc), open tasks first in that order, then the done task in its own
-# group below the last open task (S6, UCH-129), tops strictly increasing.
+# Checks the dump against $expected with ui-titles-shown.py (unit test: UiTitlesShownTest): every title is
+# shown. Order and grouping are covered by TaskListIntegrationTest in the app module (UCH-147); this check
+# only guards that stored tasks survive R8, process end and reboot.
 dump_matches() {
   dump_ui || return 1
-  python3 -I - "$tmp/window.xml" "$expected" "$seed/done.txt" >"$tmp/match.txt" 2>&1 <<'PY'
-import re, sys
-import xml.etree.ElementTree as ET
-nodes = ET.parse(sys.argv[1]).getroot().iter("node")
-nodes = [(n.get("text", "") + "\n" + n.get("content-desc", ""), n.get("bounds", "")) for n in nodes]
-titles = [t for t in open(sys.argv[2], encoding="utf-8").read().splitlines() if t]
-done = open(sys.argv[3], encoding="utf-8").read().strip()
-def top(title):
-    hits = [b for text, b in nodes if title in text]
-    return int(re.match(r"\[(-?\d+),(-?\d+)\]", hits[0]).group(2)) if hits else None
-if done not in titles:
-    print(f"broken seed: done task {done} not in the expected titles")
-    sys.exit(1)
-titles = [t for t in titles if t != done] + [done]
-if top(done) is None:
-    print(f"done task not at its place: {done} missing")
-    sys.exit(1)
-tops = []
-for title in titles:
-    if top(title) is None:
-        print(f"missing: {title}")
-        sys.exit(1)
-    tops.append(top(title))
-if any(a >= b for a, b in zip(tops, tops[1:])):
-    print("wrong order: " + ", ".join(f"{t}@{y}" for t, y in zip(titles, tops)))
-    sys.exit(1)
-i = titles.index(done)
-if i > 0 and not tops[i - 1] < tops[i]:
-    print(f"done task not at its place: {done} at index {i}: " + ", ".join(f"{t}@{y}" for t, y in zip(titles, tops)))
-    sys.exit(1)
-print("all titles in order: " + ", ".join(titles) + f"; done task {done} at index {i}")
-PY
+  python3 -I "$here/ui-titles-shown.py" "$tmp/window.xml" "$expected" >"$tmp/match.txt" 2>&1
 }
 
 # field_has <tag> <text>: the field with this tag contains the text.
@@ -125,14 +93,14 @@ discard() {
   wait_until 30 "$1: input still open after discarding" gone "$form_tag"
 }
 
-# wait_list <step>: waits until the list shows the expected titles in order; no crash.
+# wait_list <step>: waits until the list shows the expected titles; no crash.
 wait_list() {
   local step="$1" end
   end=$((SECONDS + 90))
   until dump_matches; do
     if crashed >"$tmp/crash.txt"; then cat "$tmp/crash.txt" >&2; fail "$step: crash"; fi
     if [ "$SECONDS" -ge "$end" ]; then
-      fail "$step: expected titles not shown in expected order within 90s ($(cat "$tmp/match.txt" 2>/dev/null))"
+      fail "$step: expected titles not shown within 90s ($(cat "$tmp/match.txt" 2>/dev/null))"
     fi
     sleep 2
   done
