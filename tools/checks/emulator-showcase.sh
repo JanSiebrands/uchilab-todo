@@ -248,6 +248,9 @@ fi
 # Edit in landscape (UCH-137, plan UCH-123 Z47): tap into the title, picture with the keyboard open.
 keyboard_shown() { timeout 10 adb shell dumpsys input_method | tr -d '\r' | grep -q 'mInputShown=true'; }
 if [ "$mode-$lang" = light-en ]; then
+  # Through the window manager as well: the setting alone was not applied here (run 42552339309, no rotation in
+  # the logcat), the read back below stays.
+  timeout 10 adb shell wm user-rotation lock 1 || fail "edit landscape: wm user-rotation lock 1 failed"
   setting system user_rotation 1
   wait_until 30 "edit landscape: display not rotated (hierarchy rotation 1)" rotation_is 1
   restart "edit landscape"
@@ -255,6 +258,7 @@ if [ "$mode-$lang" = light-en ]; then
   tap "edit landscape" "$title_tag"
   wait_until 30 "edit landscape: keyboard not shown after tapping the title" keyboard_shown
   shot edit-landscape "$form_tag"
+  timeout 10 adb shell wm user-rotation lock 0 || fail "edit landscape reset: wm user-rotation lock 0 failed"
   setting system user_rotation 0
   wait_until 30 "edit landscape reset: display not back in portrait" rotation_is 0
   restart "edit landscape reset"
