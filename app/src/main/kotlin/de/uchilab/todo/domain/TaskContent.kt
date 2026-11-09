@@ -33,11 +33,6 @@ class TaskContent private constructor(val title: String, val note: String?) {
         // \r\n counts as one line break; then \n, \r, NEL (U+0085), LINE SEPARATOR, PARAGRAPH SEPARATOR.
         private val LINE_BREAK = Regex("\r\n|[\n\r\u0085\u2028\u2029]")
 
-        /**
-         * Title: each line break becomes one space, then trim, then check the length.
-         * Note: trimmed, keeps its line breaks, empty after trimming means no note.
-         * The trimmed values are what gets stored.
-         */
         /** Each line break becomes one space; does not trim and does not shorten. */
         fun singleLine(raw: String): String = raw.replace(LINE_BREAK, " ")
 
@@ -47,9 +42,19 @@ class TaskContent private constructor(val title: String, val note: String?) {
         /** Length of a note as [of] counts it (graphemes of the trimmed note). */
         fun noteLength(raw: String): Int = graphemeCount(raw.trim())
 
+        /** The title as it is stored: each line break becomes one space, then trim. */
+        fun cleanTitle(raw: String): String = singleLine(raw).trim()
+
+        /** The note as it is stored: trimmed, keeps its line breaks, empty after trimming means no note. */
+        fun cleanNote(raw: String?): String? = raw?.trim()?.takeIf { it.isNotEmpty() }
+
+        /**
+         * Title: [cleanTitle], then check the length. Note: [cleanNote], then check the length.
+         * The cleaned values are what gets stored.
+         */
         fun of(title: String, note: String?): Validated {
-            val cleanTitle = singleLine(title).trim()
-            val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }
+            val cleanTitle = cleanTitle(title)
+            val cleanNote = cleanNote(note)
             val reasons = buildSet {
                 if (cleanTitle.isEmpty()) add(InvalidReason.TITLE_EMPTY)
                 if (graphemeCount(cleanTitle) > MAX_TITLE_LENGTH) add(InvalidReason.TITLE_TOO_LONG)

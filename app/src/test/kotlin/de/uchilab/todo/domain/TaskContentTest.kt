@@ -188,4 +188,20 @@ class TaskContentCountingTest {
         assertEquals("A B", content.title)
         assertEquals(null, content.note)
     }
+
+    @Test
+    fun `cleanTitle and cleanNote give what of stores`() {
+        val titles = listOf(" a\nb ", "a\r\nb", "\u2028x\u0085", "plain", "  ", "")
+        val notes = listOf(null, "", "   ", " n ", "line 1\nline 2 ", "\n\n")
+        for (title in titles) {
+            assertEquals(TaskContent.cleanTitle(title), TaskContent.singleLine(title).trim())
+        }
+        for (title in titles.filter { it.isNotBlank() }) for (note in notes) {
+            val content = (TaskContent.of(title, note) as Validated.Valid).content
+            assertEquals(content.title, TaskContent.cleanTitle(title))
+            assertEquals(content.note, TaskContent.cleanNote(note))
+        }
+        assertNull(TaskContent.cleanNote("  \n "))
+        assertEquals("line 1\nline 2", TaskContent.cleanNote(" line 1\nline 2 "))
+    }
 }

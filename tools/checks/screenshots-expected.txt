@@ -2,6 +2,11 @@ release-list-light-en.png
 release-list-dark-en.png
 release-list-light-de.png
 release-list-dark-de.png
+release-list-done-light-en.png
+release-list-done-dark-en.png
+release-list-done-light-de.png
+release-list-done-dark-de.png
+release-list-all-done-dark-en.png
 release-empty-light-en.png
 release-empty-dark-en.png
 release-empty-light-de.png
@@ -20,3 +25,10 @@ release-input-title-too-long-dark-de.png
 release-input-discard-dialog-dark-de.png
 release-input-font200-light-de.png
 release-input-landscape-dark-de.png
+release-edit-light-de.png
+release-edit-dark-de.png
+release-edit-light-en.png
+release-edit-dark-en.png
+release-edit-discard-dialog-light-de.png
+release-edit-discard-dialog-dark-en.png
+release-edit-landscape-light-en.png

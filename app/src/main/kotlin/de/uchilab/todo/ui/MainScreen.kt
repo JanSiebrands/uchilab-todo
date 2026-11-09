@@ -15,7 +15,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import de.uchilab.todo.domain.TaskStatus
+import de.uchilab.todo.ui.tasklist.StatusChange
+import de.uchilab.todo.ui.tasklist.TaskListTags
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -30,12 +38,15 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.uchilab.todo.R
+import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskId
-import de.uchilab.todo.ui.newtask.NewTaskActions
-import de.uchilab.todo.ui.newtask.NewTaskField
-import de.uchilab.todo.ui.newtask.NewTaskScreen
-import de.uchilab.todo.ui.newtask.NewTaskTags
-import de.uchilab.todo.ui.newtask.NewTaskUiState
+import de.uchilab.todo.ui.taskform.FormAnnouncement
+import androidx.compose.runtime.withFrameNanos
+import de.uchilab.todo.ui.taskform.TaskFormActions
+import de.uchilab.todo.ui.taskform.TaskFormField
+import de.uchilab.todo.ui.taskform.TaskFormScreen
+import de.uchilab.todo.ui.taskform.TaskFormTags
+import de.uchilab.todo.ui.taskform.TaskFormUiState
 import de.uchilab.todo.ui.tasklist.TaskListScreen
 import de.uchilab.todo.ui.tasklist.TaskListUiState
 
@@ -48,12 +59,19 @@ import de.uchilab.todo.ui.tasklist.TaskListUiState
 fun MainScreen(
     state: TaskListUiState,
     modifier: Modifier = Modifier,
-    newTask: NewTaskUiState = NewTaskUiState(),
-    actions: NewTaskActions = NoNewTaskActions,
+    taskForm: TaskFormUiState = TaskFormUiState(),
+    actions: TaskFormActions = NoTaskFormActions,
     onNewTask: () -> Unit = {},
     createdTaskId: TaskId? = null,
-    createdAnnouncement: Boolean = false,
+    announcement: FormAnnouncement? = null,
     onCreatedHandled: () -> Unit = {},
+    onOpenTask: (Task) -> Unit = {},
+    editedTaskId: TaskId? = null,
+    onEditedHandled: () -> Unit = {},
+    onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> },
+    statusSaveFailed: Boolean = false,
+    onStatusSaveFailedShown: () -> Unit = {},
+    statusAnnouncement: StatusChange? = null,
 ) {
     // Outside the branch on the state, so a position restored after a process restart is applied
     // as soon as the list appears. Only index and offset are saved, never titles or notes.
@@ -61,7 +79,7 @@ fun MainScreen(
 
     // A new task is on top only once the list has reported it; then jump up (with keys the list would
     // otherwise keep the entry that was visible before, and the new one would lie above the visible part).
-    val newestId = (state as? TaskListUiState.Loaded)?.tasks?.firstOrNull()?.id
+    val newestId = (state as? TaskListUiState.Loaded)?.open?.firstOrNull()?.id
     LaunchedEffect(createdTaskId, newestId) {
         if (createdTaskId != null && newestId == createdTaskId) {
             listState.scrollToItem(0)
@@ -69,9 +87,28 @@ fun MainScreen(
         }
     }
 
+    // After an edit the focus goes back to the edited entry (TalkBack follows it); the scroll position stays.
+    // Once the entry has been composed with the request, the request is handled.
+    LaunchedEffect(editedTaskId) {
+        if (editedTaskId != null) {
+            withFrameNanos { }
+            onEditedHandled()
+        }
+    }
+
+    // The failure notice: long, without action, above the "New task" action (the host sits in the Scaffold).
+    val snackbarHostState = remember { SnackbarHostState() }
+    val failedText = stringResource(R.string.task_status_save_failed)
+    LaunchedEffect(statusSaveFailed) {
+        if (statusSaveFailed) {
+            snackbarHostState.showSnackbar(failedText, duration = SnackbarDuration.Long)
+            onStatusSaveFailedShown()
+        }
+    }
+
     Box(modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
-        if (newTask.open) {
-            NewTaskScreen(newTask, actions)
+        if (taskForm.open) {
+            TaskFormScreen(taskForm, actions)
         } else {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
@@ -87,13 +124,44 @@ fun MainScreen(
                         },
                     )
                 },
+                snackbarHost = {
+                    SnackbarHost(snackbarHostState) { data ->
+                        Snackbar(data, modifier = Modifier.testTag(TaskListTags.STATUS_SNACKBAR))
+                    }
+                },
                 floatingActionButton = { if (state is TaskListUiState.Loaded) NewTaskAction(onNewTask) },
             ) { padding ->
-                TaskListScreen(state, listState, Modifier.padding(padding))
+                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding), onOpenTask, editedTaskId)
             }
         }
-        CreatedAnnouncement(createdAnnouncement)
+        FormAnnouncementNode(announcement)
+        StatusAnnouncement(statusAnnouncementText(state, statusAnnouncement))
     }
+}
+
+/** The spoken text for the last saved change; the title comes from the loaded list, not from the change. */
+@Composable
+private fun statusAnnouncementText(state: TaskListUiState, change: StatusChange?): String? {
+    val loaded = state as? TaskListUiState.Loaded ?: return null
+    val title = change?.let { c -> (loaded.open + loaded.done).firstOrNull { it.id == c.id } }?.content?.title ?: return null
+    return stringResource(
+        if (change.status == TaskStatus.DONE) R.string.task_status_announce_done else R.string.task_status_announce_open,
+        title,
+    )
+}
+
+/** Invisible node whose description changes after a status change; TalkBack reads it politely. */
+@Composable
+private fun StatusAnnouncement(text: String?) {
+    Box(
+        Modifier
+            .size(1.dp)
+            .testTag(TaskListTags.STATUS_ANNOUNCEMENT)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                if (text != null) contentDescription = text
+            },
+    )
 }
 
 @Composable
@@ -102,7 +170,7 @@ private fun NewTaskAction(onClick: () -> Unit) {
         onClick = onClick,
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.testTag(NewTaskTags.ACTION),
+        modifier = Modifier.testTag(TaskFormTags.ACTION),
     ) {
         Icon(painter = painterResource(R.drawable.ic_add), contentDescription = null)
         Spacer(Modifier.width(8.dp))
@@ -112,12 +180,16 @@ private fun NewTaskAction(onClick: () -> Unit) {
 
 /** Invisible node whose description changes once; TalkBack reads it politely. No announceForAccessibility. */
 @Composable
-private fun CreatedAnnouncement(created: Boolean) {
-    val text = if (created) stringResource(R.string.new_task_created) else null
+private fun FormAnnouncementNode(announcement: FormAnnouncement?) {
+    val text = when (announcement) {
+        FormAnnouncement.CREATED -> stringResource(R.string.new_task_created)
+        FormAnnouncement.EDITED -> stringResource(R.string.task_edit_saved)
+        null -> null
+    }
     Box(
         Modifier
             .size(1.dp)
-            .testTag(NewTaskTags.CREATED_ANNOUNCEMENT)
+            .testTag(TaskFormTags.CREATED_ANNOUNCEMENT)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
                 if (text != null) contentDescription = text
@@ -125,10 +197,10 @@ private fun CreatedAnnouncement(created: Boolean) {
     )
 }
 
-object NoNewTaskActions : NewTaskActions {
+object NoTaskFormActions : TaskFormActions {
     override fun onTitleChange(raw: String) = Unit
     override fun onNoteChange(raw: String) = Unit
-    override fun onFocusChange(field: NewTaskField) = Unit
+    override fun onFocusChange(field: TaskFormField) = Unit
     override fun onSave() = Unit
     override fun onCloseRequest() = Unit
     override fun onDiscardDismiss() = Unit

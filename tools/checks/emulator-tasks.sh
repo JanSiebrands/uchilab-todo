@@ -42,8 +42,9 @@ draft_title="Draft-$run_id"
 expected="$tmp/expected.txt"
 cp "$seed/titles.txt" "$expected"
 
-# Checks the dump against $expected: the done task (done.txt) is shown, all titles present (in text or
-# content-desc), tops strictly increasing, and the done task between its neighbours.
+# Checks the dump against $expected (repository order, newest first): the done task (done.txt) is shown, all
+# titles present (in text or content-desc), open tasks first in that order, then the done task in its own
+# group below the last open task (S6, UCH-129), tops strictly increasing.
 dump_matches() {
   dump_ui || return 1
   python3 -I - "$tmp/window.xml" "$expected" "$seed/done.txt" >"$tmp/match.txt" 2>&1 <<'PY'
@@ -59,6 +60,7 @@ def top(title):
 if done not in titles:
     print(f"broken seed: done task {done} not in the expected titles")
     sys.exit(1)
+titles = [t for t in titles if t != done] + [done]
 if top(done) is None:
     print(f"done task not at its place: {done} missing")
     sys.exit(1)
@@ -72,7 +74,7 @@ if any(a >= b for a, b in zip(tops, tops[1:])):
     print("wrong order: " + ", ".join(f"{t}@{y}" for t, y in zip(titles, tops)))
     sys.exit(1)
 i = titles.index(done)
-if (i > 0 and not tops[i - 1] < tops[i]) or (i + 1 < len(titles) and not tops[i] < tops[i + 1]):
+if i > 0 and not tops[i - 1] < tops[i]:
     print(f"done task not at its place: {done} at index {i}: " + ", ".join(f"{t}@{y}" for t, y in zip(titles, tops)))
     sys.exit(1)
 print("all titles in order: " + ", ".join(titles) + f"; done task {done} at index {i}")
