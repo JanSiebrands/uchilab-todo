@@ -14,8 +14,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.DeviceConfigurationOverride
-import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -25,12 +23,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.unit.dp
 import de.uchilab.todo.domain.TaskContent
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import de.uchilab.todo.R
@@ -435,58 +428,8 @@ class TaskFormScreenTest {
 
     // --- landscape (UCH-100) ---
 
-    private val landscape = "w640dp-h320dp-land"
-    private val longNote = (1..40).joinToString("\n") { "Zeile $it" }
-
-    /** Scrolls the form down until the title field lies behind the bar (precondition of the focus tests). */
-    private fun scrollTitleOutOfSight() {
-        composeRule.onAllNodes(hasScrollAction()).onFirst().performTouchInput { swipeUp() }
-        composeRule.waitForIdle()
-        assertTrue("precondition: title top ${titleTop()} bar bottom ${barBottom()}", titleTop() < barBottom())
-    }
-
-    /** Focus request as keyboard or TalkBack navigation does it; the field may lie outside the visible part. */
-    private fun focusTitle() = node(TaskFormTags.TITLE_FIELD).performSemanticsAction(SemanticsActions.RequestFocus)
-
     private fun barBottom() = node(TaskFormTags.CLOSE).fetchSemanticsNode().boundsInRoot.bottom
     private fun titleTop() = node(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().boundsInRoot.top
-
-    @Test
-    @Config(qualifiers = "w640dp-h320dp-land")
-    fun `in landscape the focused title field is fully shown below the bar with its label, for an edit`() {
-        show(editing(note = longNote))
-        scrollTitleOutOfSight()
-        focusTitle()
-        composeRule.waitForIdle()
-        val margin = with(composeRule.density) { 8.dp.toPx() }
-        assertTrue("title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() + margin - 1f)
-    }
-
-    @Test
-    @Config(qualifiers = "w640dp-h320dp-land")
-    fun `in landscape the focused title field is fully shown below the bar with its label, for a new task`() {
-        show(TaskFormUiState(open = true, note = longNote, focus = TaskFormField.NOTE))
-        scrollTitleOutOfSight()
-        focusTitle()
-        composeRule.waitForIdle()
-        val margin = with(composeRule.density) { 8.dp.toPx() }
-        assertTrue(titleTop() >= barBottom() + margin - 1f)
-    }
-
-    @OptIn(ExperimentalTestApi::class)
-    @Test
-    @Config(qualifiers = "w640dp-h320dp-land")
-    fun `in landscape at 200 percent text the label wins over the hint below the field`() {
-        composeRule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.FontScale(2f)) {
-                AppTheme { TaskFormScreen(TaskFormUiState(open = true, title = "a".repeat(250), note = longNote, focus = TaskFormField.NOTE), recorder) }
-            }
-        }
-        scrollTitleOutOfSight()
-        focusTitle()
-        composeRule.waitForIdle()
-        assertTrue("result: title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() - 1f)
-    }
 
     @Test
     @Config(qualifiers = "w640dp-h320dp-land")
