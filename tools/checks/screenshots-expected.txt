@@ -2,6 +2,11 @@ release-list-light-en.png
 release-list-dark-en.png
 release-list-light-de.png
 release-list-dark-de.png
+release-list-done-light-en.png
+release-list-done-dark-en.png
+release-list-done-light-de.png
+release-list-done-dark-de.png
+release-list-all-done-dark-en.png
 release-empty-light-en.png
 release-empty-dark-en.png
 release-empty-light-de.png

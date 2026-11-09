@@ -33,6 +33,7 @@ select_emulator
 list_tag="task_list"
 item_tag="task_item"
 empty_tag="task_list_empty"
+done_heading_tag="task_list_done_heading"
 action_tag="new_task_action"
 form_tag="new_task_form"
 title_tag="new_task_title"
@@ -220,5 +221,20 @@ if [ "$mode-$lang" = dark-de ]; then
   wait_until 30 "landscape reset: display not back in portrait" rotation_is 0
   restart "landscape reset"
 fi
+
+# Lists with done tasks (UCH-130, plan UCH-122 Z27/Z28): seeds done-<lang> and all-done-en of ShowcaseSeedTest.
+# Pictures only (evidence, UCH-116), waiting for the heading "Done" before each one; last, because the steps
+# above restart with the list seed.
+shot_done_seed() {
+  [ -s "$seed_root/$2/tasks.db" ] || fail "seed $seed_root/$2/tasks.db missing"
+  timeout 30 adb shell am force-stop "$package"
+  wait_process_gone
+  install_db "$seed_root/$2/tasks.db"
+  start_app "$1"
+  wait_until 90 "$1: heading of the done tasks not shown" shown "$done_heading_tag"
+  shot "$1" "$done_heading_tag"
+}
+shot_done_seed list-done "done-$lang"
+if [ "$mode-$lang" = dark-en ]; then shot_done_seed list-all-done all-done-en; fi
 
 log "OK: screenshots for $mode-$lang written to $SCREENSHOTS"
