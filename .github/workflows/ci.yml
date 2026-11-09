@@ -36,8 +36,9 @@ jobs:
           cache: gradle
       # Debug build, unit and UI tests, lint, release build with R8 (unsigned), R8 result check,
       # privacy check (permissions allowlist, backup rules, including the tests of the checks themselves).
+      # --warning-mode fail: what Gradle 10 turns into an error is red already now (UCH-68).
       - id: gradle
-        run: ./gradlew assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
+        run: ./gradlew --warning-mode fail assembleDebug assembleRelease testDebugUnitTest lint r8Check privacyCheck
       # Reviewers read this run instead of building themselves (UCH-66): reports, debug APK and R8 mapping,
       # also after a red build. Build outputs only, no signing key, no secret (the repository is public).
       - if: always()

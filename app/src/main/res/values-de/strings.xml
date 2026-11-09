@@ -29,4 +29,16 @@
     <string name="new_task_discard_keep">Weiter bearbeiten</string>
     <string name="new_task_discard_confirm">Verwerfen</string>
     <string name="new_task_created">Aufgabe angelegt</string>
+    <string name="task_item_edit">Bearbeiten</string>
+    <string name="task_edit_heading">Aufgabe bearbeiten</string>
+    <string name="task_edit_discard_title">Änderungen verwerfen?</string>
+    <string name="task_edit_discard_body">Die bisherige Fassung bleibt gespeichert.</string>
+    <string name="task_edit_saved">Änderung gespeichert</string>
+    <string name="task_list_done_heading">Erledigt</string>
+    <string name="task_status_of">Status von „%1$s“</string>
+    <string name="task_status_open">offen</string>
+    <string name="task_status_done">erledigt</string>
+    <string name="task_status_announce_done">„%1$s“ erledigt</string>
+    <string name="task_status_announce_open">„%1$s“ wieder offen</string>
+    <string name="task_status_save_failed">Status nicht gespeichert. Die Aufgabe ist unverändert, versuche es noch einmal.</string>
 </resources>

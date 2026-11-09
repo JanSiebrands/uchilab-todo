@@ -1,4 +1,4 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import androidx.lifecycle.SavedStateHandle
 import de.uchilab.todo.domain.Task
@@ -28,7 +28,7 @@ import org.junit.Test
 
 /** Plain JVM test with a fake repository. Invented data only. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class NewTaskViewModelTest {
+class TaskFormViewModelTest {
 
     private class FakeRepository : TaskRepository {
         val added = mutableListOf<TaskContent>()
@@ -47,20 +47,28 @@ class NewTaskViewModelTest {
             return result(content)
         }
 
-        override suspend fun updateContent(id: TaskId, content: TaskContent) = error("not used")
+        val updated = mutableListOf<Pair<TaskId, TaskContent>>()
+        var updateResult: (TaskId, TaskContent) -> WriteResult<Unit> = { _, _ -> WriteResult.Success(Unit) }
+
+        override suspend fun updateContent(id: TaskId, content: TaskContent): WriteResult<Unit> {
+            updated += id to content
+            gate?.await()
+            return updateResult(id, content)
+        }
+
         override suspend fun setStatus(id: TaskId, status: TaskStatus) = error("not used")
         override suspend fun delete(id: TaskId) = error("not used")
     }
 
     private val repository = FakeRepository()
     private val handle = SavedStateHandle()
-    private lateinit var viewModel: NewTaskViewModel
+    private lateinit var viewModel: TaskFormViewModel
     private val family = "👨‍👩‍👧‍👦"
 
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = NewTaskViewModel(repository, handle)
+        viewModel = TaskFormViewModel(repository, handle)
     }
 
     @After
@@ -68,7 +76,7 @@ class NewTaskViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun opened(): NewTaskViewModel = viewModel.also { it.open() }
+    private fun opened(): TaskFormViewModel = viewModel.also { it.open() }
 
     // --- opening ---
 
@@ -84,7 +92,7 @@ class NewTaskViewModelTest {
         opened()
         val state = viewModel.state
         assertTrue(state.open)
-        assertEquals(NewTaskField.TITLE, state.focus)
+        assertEquals(TaskFormField.TITLE, state.focus)
         assertFalse(state.titleMissingShown || state.saveFailed || state.discardDialog)
     }
 
@@ -170,12 +178,12 @@ class NewTaskViewModelTest {
     @Test
     fun `a missing title is not saved, shows the hint and moves the focus to the title`() {
         for (empty in listOf("", "   ")) {
-            val vm = NewTaskViewModel(repository, SavedStateHandle()).also { it.open() }
-            vm.onFocusChange(NewTaskField.NOTE)
+            val vm = TaskFormViewModel(repository, SavedStateHandle()).also { it.open() }
+            vm.onFocusChange(TaskFormField.NOTE)
             vm.onTitleChange(empty)
             vm.onSave()
             assertTrue(vm.state.titleMissingShown)
-            assertEquals(NewTaskField.TITLE, vm.state.focus)
+            assertEquals(TaskFormField.TITLE, vm.state.focus)
             assertTrue(vm.state.open)
         }
         assertTrue(repository.added.isEmpty())
@@ -209,14 +217,14 @@ class NewTaskViewModelTest {
     fun `a title above the limit is not saved and the focus goes to the first faulty field`() {
         opened().onTitleChange("a".repeat(201))
         viewModel.onNoteChange("b".repeat(2001))
-        viewModel.onFocusChange(NewTaskField.NOTE)
+        viewModel.onFocusChange(TaskFormField.NOTE)
         viewModel.onSave()
         assertTrue(repository.added.isEmpty())
-        assertEquals(NewTaskField.TITLE, viewModel.state.focus)
+        assertEquals(TaskFormField.TITLE, viewModel.state.focus)
         viewModel.onTitleChange("a")
         viewModel.onSave()
         assertTrue(repository.added.isEmpty())
-        assertEquals(NewTaskField.NOTE, viewModel.state.focus)
+        assertEquals(TaskFormField.NOTE, viewModel.state.focus)
     }
 
     // --- saving: valid ---
@@ -253,7 +261,7 @@ class NewTaskViewModelTest {
         opened().onTitleChange("Aufgabe 1")
         viewModel.onSave()
         assertNotNull(viewModel.createdTaskId)
-        assertTrue(viewModel.createdAnnouncement)
+        assertEquals(FormAnnouncement.CREATED, viewModel.announcement)
         assertTrue(handle.keys().isEmpty())
         viewModel.onCreatedHandled()
         assertNull(viewModel.createdTaskId)
@@ -282,7 +290,7 @@ class NewTaskViewModelTest {
         assertEquals("Aufgabe 1", viewModel.state.title)
         assertEquals("Notiz 1", viewModel.state.note)
         assertNull(viewModel.createdTaskId)
-        assertFalse(viewModel.createdAnnouncement)
+        assertNull(viewModel.announcement)
     }
 
     @Test
@@ -382,24 +390,24 @@ class NewTaskViewModelTest {
     fun `a second view model with the same saved state has text, hints, dialog and focus`() {
         opened().onTitleChange("Aufgabe 1")
         viewModel.onNoteChange("Notiz 1\nZeile 2")
-        viewModel.onFocusChange(NewTaskField.NOTE)
+        viewModel.onFocusChange(TaskFormField.NOTE)
         viewModel.onCloseRequest()
-        val restored = NewTaskViewModel(repository, handle).state
+        val restored = TaskFormViewModel(repository, handle).state
         assertTrue(restored.open)
         assertEquals("Aufgabe 1", restored.title)
         assertEquals("Notiz 1\nZeile 2", restored.note)
         assertTrue(restored.discardDialog)
-        assertEquals(NewTaskField.NOTE, restored.focus)
+        assertEquals(TaskFormField.NOTE, restored.focus)
     }
 
     @Test
     fun `hints survive a restore`() {
         opened().onSave()
-        assertTrue(NewTaskViewModel(repository, handle).state.titleMissingShown)
+        assertTrue(TaskFormViewModel(repository, handle).state.titleMissingShown)
         repository.result = { WriteResult.Failure(WriteError.STORAGE_FAILURE) }
         viewModel.onTitleChange("Aufgabe 1")
         viewModel.onSave()
-        assertTrue(NewTaskViewModel(repository, handle).state.saveFailed)
+        assertTrue(TaskFormViewModel(repository, handle).state.saveFailed)
     }
 
     @Test
@@ -409,7 +417,7 @@ class NewTaskViewModelTest {
         viewModel.onCloseRequest()
         viewModel.onDiscardConfirm()
         assertTrue(handle.keys().isEmpty())
-        assertFalse(NewTaskViewModel(repository, handle).state.open)
+        assertFalse(TaskFormViewModel(repository, handle).state.open)
     }
 
     // --- no content in text forms ---
@@ -420,5 +428,264 @@ class NewTaskViewModelTest {
         viewModel.onNoteChange("MARKER-Notiz-91")
         val text = viewModel.state.toString()
         assertFalse(text.contains("MARKER"))
+    }
+
+    // --- editing (UCH-121) ---
+
+    private fun task(id: Long = 7, title: String = "Aufgabe 1", note: String? = "Notiz 1", status: TaskStatus = TaskStatus.OPEN) =
+        Task(TaskId(id), (TaskContent.of(title, note) as de.uchilab.todo.domain.Validated.Valid).content, Instant.EPOCH, status)
+
+    private fun opened(task: Task): TaskFormViewModel = viewModel.also { it.openEdit(task) }
+
+    @Test
+    fun `openEdit fills the fields from the task and puts the focus nowhere`() {
+        val task = task(title = "Aufgabe 1", note = "Notiz 1")
+        opened(task)
+        val state = viewModel.state
+        assertTrue(state.open)
+        assertEquals(task.id, state.editing)
+        assertEquals(task.content, state.original)
+        assertEquals("Aufgabe 1", state.title)
+        assertEquals("Notiz 1", state.note)
+        assertNull(state.focus)
+    }
+
+    @Test
+    fun `openEdit of a task without note leaves the note field empty`() {
+        opened(task(note = null))
+        assertEquals("", viewModel.state.note)
+    }
+
+    @Test
+    fun `open after editing starts a new task`() {
+        opened(task())
+        viewModel.onDiscardConfirm()
+        viewModel.open()
+        assertNull(viewModel.state.editing)
+        assertNull(viewModel.state.original)
+    }
+
+    @Test
+    fun `closing an unchanged edit does not ask`() {
+        opened(task())
+        viewModel.onCloseRequest()
+        assertFalse(viewModel.state.open)
+        assertFalse(viewModel.state.discardDialog)
+    }
+
+    @Test
+    fun `an edit that only differs by cleaning counts as unchanged`() {
+        // trailing space, line break in the title
+        opened(task(title = "Aufgabe 1", note = "Notiz 1"))
+        viewModel.onTitleChange("Aufgabe 1 ")
+        viewModel.onCloseRequest()
+        assertFalse("trailing space", viewModel.state.open)
+
+        opened(task(title = "Aufgabe 1", note = "Notiz 1"))
+        viewModel.onTitleChange("Aufgabe\n1")
+        viewModel.onCloseRequest()
+        assertFalse("line break", viewModel.state.open)
+
+        // blank note instead of none
+        opened(task(title = "Aufgabe 1", note = null))
+        viewModel.onNoteChange("   ")
+        viewModel.onCloseRequest()
+        assertFalse("blank note", viewModel.state.open)
+
+        // typed and deleted again
+        opened(task(title = "Aufgabe 1", note = "Notiz 1"))
+        viewModel.onTitleChange("Aufgabe 1x")
+        viewModel.onTitleChange("Aufgabe 1")
+        viewModel.onCloseRequest()
+        assertFalse("typed and deleted", viewModel.state.open)
+        assertFalse(viewModel.state.discardDialog)
+    }
+
+    @Test
+    fun `a changed edit asks before closing and discarding keeps the old version`() {
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onCloseRequest()
+        assertTrue(viewModel.state.open)
+        assertTrue(viewModel.state.discardDialog)
+        viewModel.onDiscardConfirm()
+        assertFalse(viewModel.state.open)
+        assertTrue(repository.updated.isEmpty())
+    }
+
+    @Test
+    fun `saving an edit with an empty title writes nothing and shows the hint`() {
+        opened(task())
+        viewModel.onTitleChange("  ")
+        viewModel.onSave()
+        assertTrue(viewModel.state.titleMissingShown)
+        assertTrue(viewModel.state.open)
+        assertTrue(repository.updated.isEmpty())
+    }
+
+    @Test
+    fun `saving an edit writes the cleaned content for the edited task`() {
+        opened(task(id = 7))
+        viewModel.onTitleChange(" a\nb ")
+        viewModel.onNoteChange("   ")
+        viewModel.onSave()
+        val (id, content) = repository.updated.single()
+        assertEquals(TaskId(7), id)
+        assertEquals("a b", content.title)
+        assertNull(content.note)
+        assertTrue(repository.added.isEmpty())
+    }
+
+    @Test
+    fun `an edit can be saved at exactly 200 and 2000 characters but not above`() {
+        opened(task())
+        viewModel.onTitleChange(family.repeat(200))
+        viewModel.onNoteChange(family.repeat(2000))
+        viewModel.onSave()
+        assertEquals(1, repository.updated.size)
+
+        opened(task())
+        viewModel.onTitleChange(family.repeat(201))
+        viewModel.onSave()
+        assertTrue(viewModel.state.titleTooLong)
+        viewModel.onTitleChange("Aufgabe 1")
+        viewModel.onNoteChange(family.repeat(2001))
+        viewModel.onSave()
+        assertTrue(viewModel.state.noteTooLong)
+        assertEquals(1, repository.updated.size)
+    }
+
+    @Test
+    fun `saving an unchanged edit closes without writing and without announcement`() {
+        opened(task())
+        viewModel.onSave()
+        assertFalse(viewModel.state.open)
+        assertTrue(repository.updated.isEmpty())
+        assertNull(viewModel.announcement)
+        assertNull(viewModel.editedTaskId)
+    }
+
+    @Test
+    fun `a successful edit reports the task, announces it and clears the saved state`() {
+        opened(task(id = 7))
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertFalse(viewModel.state.open)
+        assertEquals(TaskId(7), viewModel.editedTaskId)
+        assertEquals(FormAnnouncement.EDITED, viewModel.announcement)
+        assertNull(viewModel.createdTaskId)
+        assertTrue(handle.keys().isEmpty())
+        viewModel.onEditedHandled()
+        assertNull(viewModel.editedTaskId)
+    }
+
+    @Test
+    fun `saving an edit twice quickly writes exactly once`() {
+        repository.gate = CompletableDeferred()
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        viewModel.onSave()
+        assertEquals(1, repository.updated.size)
+        assertTrue(repository.added.isEmpty())
+        repository.gate!!.complete(Unit)
+        assertEquals(1, repository.updated.size)
+    }
+
+    @Test
+    fun `a restored edit keeps mode, original, input and dialog and compares against the original`() {
+        opened(task(title = "Aufgabe 1", note = "Notiz 1"))
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onCloseRequest()
+        val restored = TaskFormViewModel(repository, handle)
+        assertEquals(TaskId(7), restored.state.editing)
+        assertEquals("Aufgabe 1", restored.state.original?.title)
+        assertEquals("Notiz 1", restored.state.original?.note)
+        assertEquals("Aufgabe 2", restored.state.title)
+        assertTrue(restored.state.discardDialog)
+        restored.onDiscardDismiss()
+        restored.onTitleChange("Aufgabe 1")
+        restored.onCloseRequest()
+        assertFalse(restored.state.open)
+        assertFalse(restored.state.discardDialog)
+    }
+
+    @Test
+    fun `a closed edit leaves nothing in the saved state`() {
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertTrue(handle.keys().isEmpty())
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onCloseRequest()
+        viewModel.onDiscardConfirm()
+        assertTrue(handle.keys().isEmpty())
+    }
+
+    @Test
+    fun `a failed edit keeps the input open with the hint for every write error`() {
+        for (error in listOf(WriteError.STORAGE_FAILURE, WriteError.NOT_FOUND)) {
+            repository.updateResult = { _, _ -> WriteResult.Failure(error) }
+            opened(task())
+            viewModel.onTitleChange("Aufgabe 2")
+            viewModel.onSave()
+            assertTrue(viewModel.state.open)
+            assertTrue(viewModel.state.saveFailed)
+            assertEquals("Aufgabe 2", viewModel.state.title)
+            assertNull(viewModel.editedTaskId)
+            viewModel.onDiscardConfirm()
+        }
+    }
+
+    @Test
+    fun `typing is locked while a new task is saved and works again after a failure`() {
+        repository.gate = CompletableDeferred()
+        repository.result = { WriteResult.Failure(WriteError.STORAGE_FAILURE) }
+        opened().onTitleChange("Aufgabe 1")
+        viewModel.onSave()
+        assertTrue(viewModel.state.saving)
+        viewModel.onTitleChange("x")
+        viewModel.onNoteChange("y")
+        assertEquals("Aufgabe 1", viewModel.state.title)
+        assertEquals("", viewModel.state.note)
+        repository.gate!!.complete(Unit)
+        assertFalse(viewModel.state.saving)
+        viewModel.onTitleChange("x")
+        assertEquals("x", viewModel.state.title)
+    }
+
+    @Test
+    fun `typing is locked while an edit is saved and works again after a failure`() {
+        repository.gate = CompletableDeferred()
+        repository.updateResult = { _, _ -> WriteResult.Failure(WriteError.STORAGE_FAILURE) }
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertTrue(viewModel.state.saving)
+        viewModel.onTitleChange("x")
+        viewModel.onNoteChange("y")
+        assertEquals("Aufgabe 2", viewModel.state.title)
+        assertEquals("Notiz 1", viewModel.state.note)
+        repository.gate!!.complete(Unit)
+        assertFalse(viewModel.state.saving)
+        viewModel.onTitleChange("x")
+        assertEquals("x", viewModel.state.title)
+    }
+
+    @Test
+    fun `the saving flag is not kept in the saved state`() {
+        repository.gate = CompletableDeferred()
+        opened(task())
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertFalse(TaskFormViewModel(repository, handle).state.saving)
+    }
+
+    @Test
+    fun `the text form of an edit state has neither title nor note`() {
+        opened(task(title = "MARKER-Titel-92", note = "MARKER-Notiz-92"))
+        assertFalse(viewModel.state.toString().contains("MARKER"))
+        assertFalse(viewModel.state.original.toString().contains("MARKER"))
     }
 }

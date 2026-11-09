@@ -92,6 +92,14 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Robolectric/Compose test (unit tests) and the Room compiler (KSP) bring in older guava versions with
+    // known vulnerabilities. A constraint only raises the version where guava is already present; it ships in
+    // no APK. Not for androidLintTool: Lint is tested with its own versions, only an AGP update helps there.
+    constraints {
+        testImplementation(libs.guava) { because("UCH-68: vulnerable guava on the unit test classpath") }
+        ksp(libs.guava) { because("UCH-68: vulnerable guava on the KSP processor classpath") }
+    }
 }
 
 privacyCheck {

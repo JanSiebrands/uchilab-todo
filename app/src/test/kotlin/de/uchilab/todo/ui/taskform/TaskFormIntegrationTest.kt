@@ -1,4 +1,4 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -39,7 +39,7 @@ import org.robolectric.Shadows.shadowOf
 
 /** MainActivity with the real Room file, wired through [TodoApplication]. Invented data only. */
 @RunWith(RobolectricTestRunner::class)
-class NewTaskIntegrationTest {
+class TaskFormIntegrationTest {
 
     @get:Rule
     val composeRule = createEmptyComposeRule()
@@ -77,15 +77,15 @@ class NewTaskIntegrationTest {
     }
 
     private fun openForm() {
-        waitFor("action") { count(NewTaskTags.ACTION) == 1 }
-        composeRule.onNodeWithTag(NewTaskTags.ACTION).performClick()
-        waitFor("form") { count(NewTaskTags.TITLE_FIELD) == 1 }
+        waitFor("action") { count(TaskFormTags.ACTION) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.ACTION).performClick()
+        waitFor("form") { count(TaskFormTags.TITLE_FIELD) == 1 }
     }
 
-    private fun typeTitle(text: String) = composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).performTextInput(text)
-    private fun typeNote(text: String) = composeRule.onNodeWithTag(NewTaskTags.NOTE_FIELD).performTextInput(text)
-    private fun save() = composeRule.onNodeWithTag(NewTaskTags.SAVE).performClick()
-    private fun formIsGone() = count(NewTaskTags.TITLE_FIELD) == 0
+    private fun typeTitle(text: String) = composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).performTextInput(text)
+    private fun typeNote(text: String) = composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).performTextInput(text)
+    private fun save() = composeRule.onNodeWithTag(TaskFormTags.SAVE).performClick()
+    private fun formIsGone() = count(TaskFormTags.TITLE_FIELD) == 0
 
     private fun back() {
         scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
@@ -98,7 +98,7 @@ class NewTaskIntegrationTest {
     fun `the action in the empty state opens the form with the cursor in the title and the keyboard open`() {
         launch()
         openForm()
-        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).assertIsFocused()
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsFocused()
         val manager = application.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         waitFor("keyboard") { shadowOf(manager).isSoftInputVisible }
     }
@@ -109,7 +109,7 @@ class NewTaskIntegrationTest {
         launch()
         waitFor("list") { count(TaskListTags.ITEM) == 1 }
         openForm()
-        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).assertIsFocused()
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsFocused()
     }
 
     // --- creating ---
@@ -183,10 +183,10 @@ class NewTaskIntegrationTest {
         typeTitle("Aufgabe 1")
         save()
         waitFor("announcement") {
-            composeRule.onAllNodesWithTag(NewTaskTags.CREATED_ANNOUNCEMENT, useUnmergedTree = true)
+            composeRule.onAllNodesWithTag(TaskFormTags.CREATED_ANNOUNCEMENT, useUnmergedTree = true)
                 .fetchSemanticsNodes().any { SemanticsProperties.ContentDescription in it.config }
         }
-        val config = composeRule.onAllNodesWithTag(NewTaskTags.CREATED_ANNOUNCEMENT, useUnmergedTree = true)
+        val config = composeRule.onAllNodesWithTag(TaskFormTags.CREATED_ANNOUNCEMENT, useUnmergedTree = true)
             .fetchSemanticsNodes().single().config
         assertEquals(LiveRegionMode.Polite, config[SemanticsProperties.LiveRegion])
     }
@@ -199,9 +199,9 @@ class NewTaskIntegrationTest {
         openForm()
         typeTitle("   ")
         save()
-        waitFor("hint") { count(NewTaskTags.TITLE_HINT) == 1 }
-        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).fetchSemanticsNode().config)
-        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).assertIsFocused()
+        waitFor("hint") { count(TaskFormTags.TITLE_HINT) == 1 }
+        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().config)
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsFocused()
         assertTrue(stored().isEmpty())
     }
 
@@ -224,12 +224,12 @@ class NewTaskIntegrationTest {
         openForm()
         typeTitle(family.repeat(201))
         typeNote(family.repeat(2001))
-        waitFor("hints") { count(NewTaskTags.TITLE_HINT) == 1 && count(NewTaskTags.NOTE_HINT) == 1 }
+        waitFor("hints") { count(TaskFormTags.TITLE_HINT) == 1 && count(TaskFormTags.NOTE_HINT) == 1 }
         save()
         composeRule.waitForIdle()
-        assertTrue(count(NewTaskTags.TITLE_FIELD) == 1)
-        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).fetchSemanticsNode().config)
-        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(NewTaskTags.NOTE_FIELD).fetchSemanticsNode().config)
+        assertTrue(count(TaskFormTags.TITLE_FIELD) == 1)
+        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().config)
+        assertTrue(SemanticsProperties.Error in composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).fetchSemanticsNode().config)
         assertTrue(stored().isEmpty())
     }
 
@@ -240,7 +240,7 @@ class NewTaskIntegrationTest {
         launch()
         openForm()
         typeTitle("Aufgabe 1")
-        val click = composeRule.onNodeWithTag(NewTaskTags.SAVE).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val click = composeRule.onNodeWithTag(TaskFormTags.SAVE).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
         composeRule.runOnUiThread {
             click()
             click()
@@ -272,16 +272,16 @@ class NewTaskIntegrationTest {
         typeNote("Notiz 1")
         withWriteLockedStore {
             save()
-            waitFor("save failed hint") { count(NewTaskTags.SAVE_FAILED) == 1 }
+            waitFor("save failed hint") { count(TaskFormTags.SAVE_FAILED) == 1 }
         }
         assertEquals(LiveRegionMode.Assertive,
-            composeRule.onNodeWithTag(NewTaskTags.SAVE_FAILED).fetchSemanticsNode().config[SemanticsProperties.LiveRegion])
-        composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).assertIsDisplayed()
+            composeRule.onNodeWithTag(TaskFormTags.SAVE_FAILED).fetchSemanticsNode().config[SemanticsProperties.LiveRegion])
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsDisplayed()
         assertTrue(stored().isEmpty())
         save()
         waitFor("form closed") { formIsGone() }
         assertEquals(1, stored().size)
-        assertEquals(0, count(NewTaskTags.SAVE_FAILED))
+        assertEquals(0, count(TaskFormTags.SAVE_FAILED))
     }
 
     // --- closing ---
@@ -292,7 +292,7 @@ class NewTaskIntegrationTest {
         openForm()
         back()
         waitFor("closed") { formIsGone() }
-        assertEquals(0, count(NewTaskTags.DISCARD_DIALOG))
+        assertEquals(0, count(TaskFormTags.DISCARD_DIALOG))
     }
 
     @Test
@@ -301,10 +301,10 @@ class NewTaskIntegrationTest {
         openForm()
         typeTitle("Aufgabe 1")
         back()
-        waitFor("dialog") { count(NewTaskTags.DISCARD_DIALOG) == 1 }
+        waitFor("dialog") { count(TaskFormTags.DISCARD_DIALOG) == 1 }
         back()
-        waitFor("dialog gone") { count(NewTaskTags.DISCARD_DIALOG) == 0 }
-        assertEquals(1, count(NewTaskTags.TITLE_FIELD))
+        waitFor("dialog gone") { count(TaskFormTags.DISCARD_DIALOG) == 0 }
+        assertEquals(1, count(TaskFormTags.TITLE_FIELD))
     }
 
     @Test
@@ -312,18 +312,18 @@ class NewTaskIntegrationTest {
         launch()
         openForm()
         typeTitle("Aufgabe 1")
-        composeRule.onNodeWithTag(NewTaskTags.CLOSE).performClick()
-        waitFor("dialog") { count(NewTaskTags.DISCARD_DIALOG) == 1 }
-        composeRule.onNodeWithTag(NewTaskTags.DISCARD_KEEP).performClick()
-        waitFor("dialog gone") { count(NewTaskTags.DISCARD_DIALOG) == 0 }
-        assertEquals(1, count(NewTaskTags.TITLE_FIELD))
-        composeRule.onNodeWithTag(NewTaskTags.CLOSE).performClick()
-        waitFor("dialog") { count(NewTaskTags.DISCARD_DIALOG) == 1 }
-        composeRule.onNodeWithTag(NewTaskTags.DISCARD_CONFIRM).performClick()
+        composeRule.onNodeWithTag(TaskFormTags.CLOSE).performClick()
+        waitFor("dialog") { count(TaskFormTags.DISCARD_DIALOG) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.DISCARD_KEEP).performClick()
+        waitFor("dialog gone") { count(TaskFormTags.DISCARD_DIALOG) == 0 }
+        assertEquals(1, count(TaskFormTags.TITLE_FIELD))
+        composeRule.onNodeWithTag(TaskFormTags.CLOSE).performClick()
+        waitFor("dialog") { count(TaskFormTags.DISCARD_DIALOG) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.DISCARD_CONFIRM).performClick()
         waitFor("closed") { formIsGone() }
         assertTrue(stored().isEmpty())
         openForm()
-        val text = composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).fetchSemanticsNode().config
+        val text = composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().config
         assertEquals("", text[SemanticsProperties.EditableText].text)
     }
 
@@ -335,15 +335,15 @@ class NewTaskIntegrationTest {
         openForm()
         typeNote("Notiz 1")
         save()
-        waitFor("hint") { count(NewTaskTags.TITLE_HINT) == 1 }
-        composeRule.onNodeWithTag(NewTaskTags.CLOSE).performClick()
-        waitFor("dialog") { count(NewTaskTags.DISCARD_DIALOG) == 1 }
+        waitFor("hint") { count(TaskFormTags.TITLE_HINT) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.CLOSE).performClick()
+        waitFor("dialog") { count(TaskFormTags.DISCARD_DIALOG) == 1 }
 
         scenario!!.recreate()
 
-        waitFor("dialog back") { count(NewTaskTags.DISCARD_DIALOG) == 1 }
-        assertEquals(1, count(NewTaskTags.TITLE_HINT))
-        val note = composeRule.onNodeWithTag(NewTaskTags.NOTE_FIELD).fetchSemanticsNode().config
+        waitFor("dialog back") { count(TaskFormTags.DISCARD_DIALOG) == 1 }
+        assertEquals(1, count(TaskFormTags.TITLE_HINT))
+        val note = composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).fetchSemanticsNode().config
         assertEquals("Notiz 1", note[SemanticsProperties.EditableText].text)
     }
 
@@ -354,11 +354,11 @@ class NewTaskIntegrationTest {
         typeTitle("Aufgabe 1")
         withWriteLockedStore {
             save()
-            waitFor("save failed hint") { count(NewTaskTags.SAVE_FAILED) == 1 }
+            waitFor("save failed hint") { count(TaskFormTags.SAVE_FAILED) == 1 }
         }
         scenario!!.recreate()
-        waitFor("hint back") { count(NewTaskTags.SAVE_FAILED) == 1 }
-        assertEquals("Aufgabe 1", composeRule.onNodeWithTag(NewTaskTags.TITLE_FIELD).fetchSemanticsNode()
+        waitFor("hint back") { count(TaskFormTags.SAVE_FAILED) == 1 }
+        assertEquals("Aufgabe 1", composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).fetchSemanticsNode()
             .config[SemanticsProperties.EditableText].text)
     }
 }
