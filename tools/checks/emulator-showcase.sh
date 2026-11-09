@@ -4,7 +4,8 @@
 # release-<state>-<light|dark>-<de|en>.png to $SCREENSHOTS:
 #   every combination: empty (fresh install), list (readable seed of ShowcaseSeedTest for the language);
 #   light-en and dark-de: input-empty, input-title-missing, input-title-too-long, input-discard-dialog;
-#   light-de: input-font200 (font scale 2.0); dark-de: input-landscape (user rotation 1).
+#   light-de: input-font200 (font scale 2.0); dark-de: input-landscape (user rotation 1);
+#   every combination: edit; light-de and dark-en: edit-discard-dialog; light-en: edit-landscape (UCH-137).
 # Before each picture the state's test tag must be in the dump directly before and after screencap (shot in
 # emulator-lib.sh). The language is checked by comparing the text of new_task_action with the string resource
 # of that language (ui-node-text.py), the seed by showcase-seed-check.py and the list check below, "Save" at
@@ -44,6 +45,7 @@ discard_dialog_tag="new_task_discard_dialog"
 discard_confirm_tag="new_task_discard_confirm"
 discard_keep_tag="new_task_discard_keep"
 close_tag="new_task_close"
+item_note_tag="task_item_note"
 
 reset_display() {
   timeout 10 adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
@@ -163,6 +165,27 @@ keep_dump list
 language_matches "list"
 shot list "$list_tag"
 
+# Edit (UCH-137, plan UCH-123 Z23/Z34/Z46): open the first entry with a note by tapping its note line (inside the
+# clickable entry task_item); an existing task opens without focus and keyboard. Pictures only (evidence, UCH-116).
+open_edit() {
+  tap "$1" "$item_note_tag"
+  wait_until 30 "$1: form not shown after tapping the entry" shown "$title_tag"
+}
+open_edit "edit"
+shot edit "$form_tag"
+if [ "$mode-$lang" = light-de ] || [ "$mode-$lang" = dark-en ]; then
+  # Change the title and close by touch (as in the input flow above, so no key event leaves touch mode).
+  tap "edit" "$title_tag"
+  timeout 30 adb shell input text 2 || fail "edit: input text failed"
+  tap "edit" "$close_tag"
+  wait_until 30 "edit: no discard dialog after changing the title and closing" shown "$discard_dialog_tag"
+  shot edit-discard-dialog "$discard_dialog_tag"
+  tap "edit" "$discard_confirm_tag"
+else
+  tap "edit" "$close_tag"
+fi
+wait_until 30 "edit: form still open after closing" gone "$form_tag"
+
 if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   open_new_task "input"
   shot input-empty "$form_tag"
@@ -220,6 +243,21 @@ if [ "$mode-$lang" = dark-de ]; then
   setting system user_rotation 0
   wait_until 30 "landscape reset: display not back in portrait" rotation_is 0
   restart "landscape reset"
+fi
+
+# Edit in landscape (UCH-137, plan UCH-123 Z47): tap into the title, picture with the keyboard open.
+keyboard_shown() { timeout 10 adb shell dumpsys input_method | tr -d '\r' | grep -q 'mInputShown=true'; }
+if [ "$mode-$lang" = light-en ]; then
+  setting system user_rotation 1
+  wait_until 30 "edit landscape: display not rotated (hierarchy rotation 1)" rotation_is 1
+  restart "edit landscape"
+  open_edit "edit landscape"
+  tap "edit landscape" "$title_tag"
+  wait_until 30 "edit landscape: keyboard not shown after tapping the title" keyboard_shown
+  shot edit-landscape "$form_tag"
+  setting system user_rotation 0
+  wait_until 30 "edit landscape reset: display not back in portrait" rotation_is 0
+  restart "edit landscape reset"
 fi
 
 # Lists with done tasks (UCH-130, plan UCH-122 Z27/Z28): seeds done-<lang> and all-done-en of ShowcaseSeedTest.
