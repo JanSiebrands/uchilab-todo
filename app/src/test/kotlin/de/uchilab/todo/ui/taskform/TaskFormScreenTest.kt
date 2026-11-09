@@ -25,10 +25,17 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.unit.dp
 import de.uchilab.todo.domain.TaskContent
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import de.uchilab.todo.R
 import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.ui.taskform.FormAnnouncement
 import de.uchilab.todo.ui.AppTheme
 import de.uchilab.todo.ui.MainScreen
 import de.uchilab.todo.ui.tasklist.TaskListUiState
@@ -69,7 +76,7 @@ class TaskFormScreenTest {
     }
 
     private fun open(title: String = "", note: String = "", block: (TaskFormUiState) -> TaskFormUiState = { it }) =
-        block(TaskFormUiState(open = true, title = title, note = note))
+        block(TaskFormUiState(open = true, title = title, note = note, focus = TaskFormField.TITLE))
 
     /** Unmerged: hints and counters sit inside the merged node of their field. */
     private fun node(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true)
@@ -330,7 +337,7 @@ class TaskFormScreenTest {
     @Test
     fun `the created announcement is a polite live region with its text`() {
         composeRule.setContent {
-            AppTheme { MainScreen(TaskListUiState.Loaded(emptyList(), emptyList()), createdTaskId = TaskId(1), createdAnnouncement = true) }
+            AppTheme { MainScreen(TaskListUiState.Loaded(emptyList(), emptyList()), createdTaskId = TaskId(1), announcement = FormAnnouncement.CREATED) }
         }
         val config = tagged(TaskFormTags.CREATED_ANNOUNCEMENT, unmerged = true).fetchSemanticsNodes().single().config
         assertEquals(LiveRegionMode.Polite, config[SemanticsProperties.LiveRegion])
@@ -431,6 +438,16 @@ class TaskFormScreenTest {
     private val landscape = "w640dp-h320dp-land"
     private val longNote = (1..40).joinToString("\n") { "Zeile $it" }
 
+    /** Scrolls the form down until the title field lies behind the bar (precondition of the focus tests). */
+    private fun scrollTitleOutOfSight() {
+        composeRule.onAllNodes(hasScrollAction()).onFirst().performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        assertTrue("precondition: title top ${titleTop()} bar bottom ${barBottom()}", titleTop() < barBottom())
+    }
+
+    /** Focus request as keyboard or TalkBack navigation does it; the field may lie outside the visible part. */
+    private fun focusTitle() = node(TaskFormTags.TITLE_FIELD).performSemanticsAction(SemanticsActions.RequestFocus)
+
     private fun barBottom() = node(TaskFormTags.CLOSE).fetchSemanticsNode().boundsInRoot.bottom
     private fun titleTop() = node(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().boundsInRoot.top
 
@@ -438,9 +455,8 @@ class TaskFormScreenTest {
     @Config(qualifiers = "w640dp-h320dp-land")
     fun `in landscape the focused title field is fully shown below the bar with its label, for an edit`() {
         show(editing(note = longNote))
-        node(TaskFormTags.NOTE_FIELD).performClick()
-        composeRule.waitForIdle()
-        node(TaskFormTags.TITLE_FIELD).performClick()
+        scrollTitleOutOfSight()
+        focusTitle()
         composeRule.waitForIdle()
         val margin = with(composeRule.density) { 8.dp.toPx() }
         assertTrue("title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() + margin - 1f)
@@ -450,8 +466,8 @@ class TaskFormScreenTest {
     @Config(qualifiers = "w640dp-h320dp-land")
     fun `in landscape the focused title field is fully shown below the bar with its label, for a new task`() {
         show(TaskFormUiState(open = true, note = longNote, focus = TaskFormField.NOTE))
-        composeRule.waitForIdle()
-        node(TaskFormTags.TITLE_FIELD).performClick()
+        scrollTitleOutOfSight()
+        focusTitle()
         composeRule.waitForIdle()
         val margin = with(composeRule.density) { 8.dp.toPx() }
         assertTrue(titleTop() >= barBottom() + margin - 1f)
@@ -463,14 +479,13 @@ class TaskFormScreenTest {
     fun `in landscape at 200 percent text the label wins over the hint below the field`() {
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.FontScale(2f)) {
-                AppTheme { TaskFormScreen(open("a".repeat(250), longNote), recorder) }
+                AppTheme { TaskFormScreen(TaskFormUiState(open = true, title = "a".repeat(250), note = longNote, focus = TaskFormField.NOTE), recorder) }
             }
         }
-        node(TaskFormTags.NOTE_FIELD).performClick()
+        scrollTitleOutOfSight()
+        focusTitle()
         composeRule.waitForIdle()
-        node(TaskFormTags.TITLE_FIELD).performClick()
-        composeRule.waitForIdle()
-        assertTrue("title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() - 1f)
+        assertTrue("result: title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() - 1f)
     }
 
     @Test

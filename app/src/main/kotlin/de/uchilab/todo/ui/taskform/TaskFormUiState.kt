@@ -1,12 +1,15 @@
 package de.uchilab.todo.ui.taskform
 
 import de.uchilab.todo.domain.TaskContent
+import de.uchilab.todo.domain.TaskId
 
 enum class TaskFormField { TITLE, NOTE }
 
 /**
  * What the input screen shows. Lengths and limits come from [TaskContent], the screen has no counting of its own.
  * [focusTick] is not saved; it makes a repeated request for the same field visible to the screen.
+ * [editing] is the id of the task being edited, null for a new task; [original] is its stored content at the time
+ * the form was opened (for the "unchanged" comparison). [saving] is only in memory: while true, input is locked.
  */
 class TaskFormUiState(
     val open: Boolean = false,
@@ -17,6 +20,9 @@ class TaskFormUiState(
     val discardDialog: Boolean = false,
     val focus: TaskFormField? = null,
     val focusTick: Int = 0,
+    val editing: TaskId? = null,
+    val original: TaskContent? = null,
+    val saving: Boolean = false,
 ) {
     val titleLength: Int = TaskContent.titleLength(title)
     val noteLength: Int = TaskContent.noteLength(note)
@@ -34,6 +40,9 @@ class TaskFormUiState(
         const val NOTE_COUNTER_FROM = 1600
     }
 }
+
+/** What is spoken (politely) once after the form closed with a change. */
+enum class FormAnnouncement { CREATED, EDITED }
 
 /** What the input screen reports back; implemented by the view model. */
 interface TaskFormActions {

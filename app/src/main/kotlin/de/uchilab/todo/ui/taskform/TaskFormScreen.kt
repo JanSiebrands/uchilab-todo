@@ -1,6 +1,16 @@
 package de.uchilab.todo.ui.taskform
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +65,7 @@ import de.uchilab.todo.domain.TaskContent
 import java.text.NumberFormat
 
 private val FormPadding = 16.dp
+private val LabelMargin = 8.dp
 private const val NOTE_MIN_LINES = 4
 
 /** Stateless input screen: bar with close and save, the two fields, hints, save failure and the discard dialog. */
@@ -66,9 +77,11 @@ fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: M
     val noteFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    // Cursor in the title (or in the field that had the focus before rotation or process end) and the keyboard open.
+    // New task: cursor in the title (or in the field that had the focus before rotation or process end), keyboard open.
+    // An existing task opens without focus and without keyboard (focus is null); typing starts where the person taps.
     LaunchedEffect(Unit) {
-        requestFocus(state.focus ?: TaskFormField.TITLE, titleFocus, noteFocus)
+        val field = state.focus ?: return@LaunchedEffect
+        requestFocus(field, titleFocus, noteFocus)
         keyboard?.show()
     }
     // Later requests, e.g. the first faulty field after "Save". Not on the first composition (handled above).
@@ -90,7 +103,7 @@ fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: M
                 },
                 title = {
                     Text(
-                        text = stringResource(R.string.new_task_heading),
+                        text = stringResource(if (state.editing == null) R.string.new_task_heading else R.string.task_edit_heading),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.semantics { heading() },
@@ -107,7 +120,7 @@ fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: M
         Form(state, actions, titleFocus, noteFocus, padding)
     }
 
-    if (state.discardDialog) DiscardDialog(actions)
+    if (state.discardDialog) DiscardDialog(actions, editing = state.editing != null)
 }
 
 private fun requestFocus(field: TaskFormField, title: FocusRequester, note: FocusRequester) {
@@ -124,11 +137,14 @@ private fun Form(
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val numbers = remember(locale) { NumberFormat.getIntegerInstance(locale) }
+    // Height of the visible part of the form (shrinks when the keyboard opens); the focused field scrolls into it.
+    var viewportHeight by remember { mutableIntStateOf(0) }
     Column(
         modifier = Modifier
             .padding(padding)
             .consumeWindowInsets(padding)
             .imePadding()
+            .onSizeChanged { viewportHeight = it.height }
             .verticalScroll(rememberScrollState())
             .padding(FormPadding),
         verticalArrangement = Arrangement.spacedBy(FormPadding),
@@ -154,6 +170,8 @@ private fun Form(
             counterTag = TaskFormTags.TITLE_COUNTER,
             singleLine = true,
             focusRequester = titleFocus,
+            readOnly = state.saving,
+            viewportHeight = viewportHeight,
             onFocus = { actions.onFocusChange(TaskFormField.TITLE) },
         )
 
@@ -176,6 +194,8 @@ private fun Form(
             counterTag = TaskFormTags.NOTE_COUNTER,
             singleLine = false,
             focusRequester = noteFocus,
+            readOnly = state.saving,
+            viewportHeight = viewportHeight,
             onFocus = { actions.onFocusChange(TaskFormField.NOTE) },
         )
     }
@@ -209,12 +229,16 @@ private fun Field(
     counterTag: String,
     singleLine: Boolean,
     focusRequester: FocusRequester,
+    readOnly: Boolean,
+    viewportHeight: Int,
     onFocus: () -> Unit,
 ) {
     val supporting = hint ?: requiredText
+    val bringIntoView = rememberLabelBringIntoView(viewportHeight)
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
+        readOnly = readOnly,
         label = { Text(label) },
         isError = hint != null,
         singleLine = singleLine,
@@ -252,9 +276,39 @@ private fun Field(
             .fillMaxWidth()
             .testTag(tag)
             .focusRequester(focusRequester)
-            .onFocusChanged { if (it.isFocused) onFocus() }
+            .then(bringIntoView.modifier)
+            .onFocusChanged {
+                bringIntoView.focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
             .then(if (hint != null) Modifier.semantics { error(hint) } else Modifier),
     )
+}
+
+/**
+ * Scrolls a focused field into view including its label: from [LabelMargin] above the field (the label sits on its top
+ * edge) down to its bottom, but no taller than the visible part of the form, so the label wins over the hint below it
+ * (200 % text in landscape). Repeated when the visible height changes, i.e. after the keyboard has come up.
+ */
+private class LabelBringIntoView(val modifier: Modifier) {
+    var focused by mutableStateOf(false)
+}
+
+@Composable
+private fun rememberLabelBringIntoView(viewportHeight: Int): LabelBringIntoView {
+    val requester = remember { BringIntoViewRequester() }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val margin = with(LocalDensity.current) { LabelMargin.toPx() }
+    val result = remember {
+        LabelBringIntoView(Modifier.bringIntoViewRequester(requester).onSizeChanged { size = it })
+    }
+    val currentSize by rememberUpdatedState(size)
+    LaunchedEffect(result.focused, viewportHeight) {
+        if (!result.focused || viewportHeight <= 0) return@LaunchedEffect
+        val bottom = minOf(currentSize.height.toFloat(), viewportHeight - margin)
+        requester.bringIntoView(Rect(0f, -margin, currentSize.width.toFloat(), bottom))
+    }
+    return result
 }
 
 /** Fixed text, never a technical message; urgent live region so TalkBack says it at once. */
@@ -294,12 +348,12 @@ private fun SaveFailedNotice() {
  * The dialog lives in its own window, so the root's testTagsAsResourceId does not reach it and is set here again.
  */
 @Composable
-private fun DiscardDialog(actions: TaskFormActions) {
+private fun DiscardDialog(actions: TaskFormActions, editing: Boolean) {
     AlertDialog(
         onDismissRequest = actions::onDiscardDismiss,
         modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag(TaskFormTags.DISCARD_DIALOG),
-        title = { Text(stringResource(R.string.new_task_discard_title)) },
-        text = { Text(stringResource(R.string.new_task_discard_body)) },
+        title = { Text(stringResource(if (editing) R.string.task_edit_discard_title else R.string.new_task_discard_title)) },
+        text = { Text(stringResource(if (editing) R.string.task_edit_discard_body else R.string.new_task_discard_body)) },
         dismissButton = {
             TextButton(onClick = actions::onDiscardDismiss, modifier = Modifier.testTag(TaskFormTags.DISCARD_KEEP)) {
                 Text(stringResource(R.string.new_task_discard_keep))

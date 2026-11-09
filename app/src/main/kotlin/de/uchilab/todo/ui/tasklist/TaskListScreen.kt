@@ -16,7 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Checkbox
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.semantics.stateDescription
@@ -71,6 +75,8 @@ fun TaskListScreen(
     listState: LazyListState,
     onStatusChange: (TaskId, TaskStatus) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenTask: (Task) -> Unit = {},
+    focusTaskId: TaskId? = null,
 ) {
     when (state) {
         TaskListUiState.Loading -> Box(modifier.fillMaxSize())
@@ -78,7 +84,7 @@ fun TaskListScreen(
             if (state.open.isEmpty() && state.done.isEmpty()) {
                 EmptyState(modifier)
             } else {
-                TaskList(state, listState, onStatusChange, modifier)
+                TaskList(state, listState, onStatusChange, onOpenTask, focusTaskId, modifier)
             }
         TaskListUiState.ReadFailed -> ReadFailedState(modifier)
     }
@@ -89,6 +95,8 @@ private fun TaskList(
     state: TaskListUiState.Loaded,
     listState: LazyListState,
     onStatusChange: (TaskId, TaskStatus) -> Unit,
+    onOpenTask: (Task) -> Unit,
+    focusTaskId: TaskId?,
     modifier: Modifier,
 ) {
     KeepPositionWhenTasksMove(state, listState)
@@ -97,10 +105,14 @@ private fun TaskList(
         modifier = modifier.fillMaxSize().testTag(TaskListTags.LIST),
         contentPadding = PaddingValues(bottom = ListBottomPadding),
     ) {
-        items(state.open, key = { it.id.value }) { task -> TaskRow(task, onStatusChange, Modifier.animateItem()) }
+        items(state.open, key = { it.id.value }) { task ->
+            TaskRow(task, onStatusChange, onOpenTask, focusTaskId == task.id, Modifier.animateItem())
+        }
         if (state.done.isNotEmpty()) {
             item(key = DONE_HEADING_KEY) { DoneHeading(Modifier.animateItem()) }
-            items(state.done, key = { it.id.value }) { task -> TaskRow(task, onStatusChange, Modifier.animateItem()) }
+            items(state.done, key = { it.id.value }) { task ->
+                TaskRow(task, onStatusChange, onOpenTask, focusTaskId == task.id, Modifier.animateItem())
+            }
         }
     }
 }
@@ -142,19 +154,34 @@ private fun DoneHeading(modifier: Modifier) {
 }
 
 @Composable
-private fun TaskRow(task: Task, onStatusChange: (TaskId, TaskStatus) -> Unit, modifier: Modifier) {
+private fun TaskRow(
+    task: Task,
+    onStatusChange: (TaskId, TaskStatus) -> Unit,
+    onOpenTask: (Task) -> Unit,
+    requestFocus: Boolean,
+    modifier: Modifier,
+) {
     Column(modifier) {
-        TaskEntry(task, onStatusChange)
+        TaskEntry(task, onStatusChange, onOpenTask, requestFocus)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
 /**
  * Check box (own focus target) and text. Title in full, note up to three lines; the text is one focus target
- * for TalkBack that reads the whole note. Only the check box changes the status.
+ * for TalkBack that reads the whole note. Only the check box changes the status; a tap on the text opens the
+ * task for editing. [requestFocus] puts the focus on the text after the task was edited.
  */
 @Composable
-private fun TaskEntry(task: Task, onStatusChange: (TaskId, TaskStatus) -> Unit) {
+private fun TaskEntry(
+    task: Task,
+    onStatusChange: (TaskId, TaskStatus) -> Unit,
+    onOpenTask: (Task) -> Unit,
+    requestFocus: Boolean,
+) {
+    val focusRequester = remember { FocusRequester() }
+    if (requestFocus) LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val editLabel = stringResource(R.string.task_item_edit)
     val title = task.content.title
     val note = task.content.note
     val done = task.status == TaskStatus.DONE
@@ -178,10 +205,12 @@ private fun TaskEntry(task: Task, onStatusChange: (TaskId, TaskStatus) -> Unit) 
                 .weight(1f)
                 .heightIn(min = EntryMinHeight)
                 .testTag(TaskListTags.ITEM)
+                .focusRequester(focusRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = spoken
                     if (done) stateDescription = stateText
                 }
+                .clickable(onClickLabel = editLabel) { onOpenTask(task) }
                 .padding(start = TextStartPadding, end = EntryHorizontalPadding, top = EntryVerticalPadding, bottom = EntryVerticalPadding),
         ) {
             Text(

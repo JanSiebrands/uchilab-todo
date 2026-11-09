@@ -35,6 +35,11 @@
     <string name="new_task_discard_confirm">Discard</string>
     <!-- Spoken by TalkBack after a task was created. -->
     <string name="new_task_created">Task added</string>
+    <string name="task_item_edit">Edit</string>
+    <string name="task_edit_heading">Edit task</string>
+    <string name="task_edit_discard_title">Discard changes?</string>
+    <string name="task_edit_discard_body">The previous version stays saved.</string>
+    <string name="task_edit_saved">Changes saved</string>
     <string name="task_list_done_heading">Done</string>
     <!-- Spoken only: description of the check box, %1$s = title. -->
     <string name="task_status_of">Status of “%1$s”</string>

@@ -81,7 +81,7 @@ class TaskListScreenTest {
 
     private fun show(state: TaskListUiState) {
         composeRule.setContent {
-            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange, onOpenTask) }
+            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange, onOpenTask = onOpenTask) }
         }
     }
 
@@ -206,10 +206,14 @@ class TaskListScreenTest {
     }
 
     @Test
-    fun `the text of an entry is not clickable, the check box is the only click target`() {
+    fun `an entry has exactly two click targets, the check box and the text, which are separate`() {
+        // Since S5 the text opens the task; the check box stays its own target (design A2).
         show(loaded(listOf(task(1, "A", "B"))))
-        composeRule.onNodeWithTag(TaskListTags.ITEM).assert(!SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
-        composeRule.onAllNodes(hasClickAction()).assertCountEquals(1)
+        composeRule.onAllNodes(hasClickAction()).assertCountEquals(2)
+        composeRule.onNodeWithTag(TaskListTags.ITEM).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        val box = composeRule.onNodeWithTag(TaskListTags.ITEM_CHECKBOX).fetchSemanticsNode().boundsInRoot
+        val text = composeRule.onNodeWithTag(TaskListTags.ITEM).fetchSemanticsNode().boundsInRoot
+        assertTrue(box.right <= text.left)
     }
 
     // --- languages ---

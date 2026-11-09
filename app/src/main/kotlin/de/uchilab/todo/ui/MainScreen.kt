@@ -38,7 +38,10 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.uchilab.todo.R
+import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.ui.taskform.FormAnnouncement
+import androidx.compose.runtime.withFrameNanos
 import de.uchilab.todo.ui.taskform.TaskFormActions
 import de.uchilab.todo.ui.taskform.TaskFormField
 import de.uchilab.todo.ui.taskform.TaskFormScreen
@@ -60,8 +63,11 @@ fun MainScreen(
     actions: TaskFormActions = NoTaskFormActions,
     onNewTask: () -> Unit = {},
     createdTaskId: TaskId? = null,
-    createdAnnouncement: Boolean = false,
+    announcement: FormAnnouncement? = null,
     onCreatedHandled: () -> Unit = {},
+    onOpenTask: (Task) -> Unit = {},
+    editedTaskId: TaskId? = null,
+    onEditedHandled: () -> Unit = {},
     onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> },
     statusSaveFailed: Boolean = false,
     onStatusSaveFailedShown: () -> Unit = {},
@@ -78,6 +84,15 @@ fun MainScreen(
         if (createdTaskId != null && newestId == createdTaskId) {
             listState.scrollToItem(0)
             onCreatedHandled()
+        }
+    }
+
+    // After an edit the focus goes back to the edited entry (TalkBack follows it); the scroll position stays.
+    // Once the entry has been composed with the request, the request is handled.
+    LaunchedEffect(editedTaskId) {
+        if (editedTaskId != null) {
+            withFrameNanos { }
+            onEditedHandled()
         }
     }
 
@@ -116,10 +131,10 @@ fun MainScreen(
                 },
                 floatingActionButton = { if (state is TaskListUiState.Loaded) NewTaskAction(onNewTask) },
             ) { padding ->
-                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding))
+                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding), onOpenTask, editedTaskId)
             }
         }
-        CreatedAnnouncement(createdAnnouncement)
+        FormAnnouncementNode(announcement)
         StatusAnnouncement(statusAnnouncementText(state, statusAnnouncement))
     }
 }
@@ -165,8 +180,12 @@ private fun NewTaskAction(onClick: () -> Unit) {
 
 /** Invisible node whose description changes once; TalkBack reads it politely. No announceForAccessibility. */
 @Composable
-private fun CreatedAnnouncement(created: Boolean) {
-    val text = if (created) stringResource(R.string.new_task_created) else null
+private fun FormAnnouncementNode(announcement: FormAnnouncement?) {
+    val text = when (announcement) {
+        FormAnnouncement.CREATED -> stringResource(R.string.new_task_created)
+        FormAnnouncement.EDITED -> stringResource(R.string.task_edit_saved)
+        null -> null
+    }
     Box(
         Modifier
             .size(1.dp)
