@@ -77,10 +77,11 @@ class TaskListScreenTest {
     private fun loaded(tasks: List<Task>) = tasks.groupByStatus()
 
     private var onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> }
+    private var onOpenTask: (Task) -> Unit = {}
 
     private fun show(state: TaskListUiState) {
         composeRule.setContent {
-            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange) }
+            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange, onOpenTask) }
         }
     }
 
@@ -558,5 +559,41 @@ class TaskListScreenTest {
                 AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange) }
             }
         }
+    }
+
+    // --- opening for editing (S5) ---
+
+    @Test
+    fun `an entry offers the click label Edit`() {
+        show(loaded(listOf(task(1, "Offen", "Notiz"), task(2, "Fertig", status = TaskStatus.DONE))))
+        val label = context.getString(R.string.task_item_edit)
+        val entries = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes()
+        assertEquals(2, entries.size)
+        for (entry in entries) {
+            assertEquals(label, entry.config[SemanticsActions.OnClick].label)
+        }
+    }
+
+    @Test
+    fun `tapping the text of an open or a done entry opens that task once and never changes the status`() {
+        val opened = mutableListOf<TaskId>()
+        val changed = mutableListOf<TaskId>()
+        onOpenTask = { opened += it.id }
+        onStatusChange = { id, _ -> changed += id }
+        show(loaded(listOf(task(2, "Offen", "Notiz"), task(1, "Fertig", status = TaskStatus.DONE))))
+        unmerged(TaskListTags.ITEM_TITLE)[0].performClick()
+        assertEquals(listOf(TaskId(2)), opened)
+        unmerged(TaskListTags.ITEM_TITLE)[1].performClick()
+        assertEquals(listOf(TaskId(2), TaskId(1)), opened)
+        assertTrue(changed.isEmpty())
+    }
+
+    @Test
+    fun `the check box never opens the task`() {
+        val opened = mutableListOf<TaskId>()
+        onOpenTask = { opened += it.id }
+        show(loaded(listOf(task(1, "Offen"))))
+        checkboxes()[0].performClick()
+        assertTrue(opened.isEmpty())
     }
 }

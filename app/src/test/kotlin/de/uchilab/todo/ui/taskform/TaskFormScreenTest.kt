@@ -13,6 +13,17 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.FontScale
+import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.semantics.SemanticsProperties.Heading
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.unit.dp
+import de.uchilab.todo.domain.TaskContent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
@@ -370,4 +381,103 @@ class TaskFormScreenTest {
         saveFailed: Boolean = this.saveFailed,
         dialog: Boolean = discardDialog,
     ) = TaskFormUiState(open, title, note, titleMissing, saveFailed, dialog, focus, focusTick)
+
+    // --- editing (S5) ---
+
+    private val sampleContent = (TaskContent.of("Aufgabe 1", "Notiz 1") as de.uchilab.todo.domain.Validated.Valid).content
+
+    private fun editing(title: String = "Aufgabe 1", note: String = "Notiz 1") =
+        TaskFormUiState(open = true, editing = TaskId(7), original = sampleContent, title = title, note = note)
+
+    @Test
+    fun `the discard dialog of an edit has its own texts, the one of a new task keeps its texts`() {
+        show(TaskFormUiState(open = true, title = "x", discardDialog = true, editing = TaskId(7), original = sampleContent))
+        composeRule.onNodeWithText(context.getString(R.string.task_edit_discard_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.task_edit_discard_body)).assertIsDisplayed()
+        tagged(TaskFormTags.DISCARD_DIALOG).assertCountEquals(1)
+    }
+
+    @Test
+    fun `the discard dialog of a new task shows the new task texts`() {
+        show(open("Aufgabe 1") { it.withHints(dialog = true) })
+        composeRule.onNodeWithText(context.getString(R.string.new_task_discard_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.new_task_discard_body)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(context.getString(R.string.task_edit_discard_title)).assertCountEquals(0)
+    }
+
+    @Test
+    fun `an edit has the edit heading as a heading and not the new task heading`() {
+        show(editing())
+        composeRule.onNodeWithText(context.getString(R.string.task_edit_heading)).assert(SemanticsMatcher.keyIsDefined(Heading))
+        composeRule.onAllNodesWithText(context.getString(R.string.new_task_heading)).assertCountEquals(0)
+    }
+
+    @Test
+    fun `an edit without a focus request leaves both fields unfocused`() {
+        show(editing())
+        composeRule.waitForIdle()
+        node(TaskFormTags.TITLE_FIELD).assertIsNotFocused()
+        node(TaskFormTags.NOTE_FIELD).assertIsNotFocused()
+    }
+
+    @Test
+    fun `a new task still starts with the cursor in the title`() {
+        show(TaskFormUiState(open = true, focus = TaskFormField.TITLE))
+        node(TaskFormTags.TITLE_FIELD).assertIsFocused()
+    }
+
+    // --- landscape (UCH-100) ---
+
+    private val landscape = "w640dp-h320dp-land"
+    private val longNote = (1..40).joinToString("\n") { "Zeile $it" }
+
+    private fun barBottom() = node(TaskFormTags.CLOSE).fetchSemanticsNode().boundsInRoot.bottom
+    private fun titleTop() = node(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().boundsInRoot.top
+
+    @Test
+    @Config(qualifiers = "w640dp-h320dp-land")
+    fun `in landscape the focused title field is fully shown below the bar with its label, for an edit`() {
+        show(editing(note = longNote))
+        node(TaskFormTags.NOTE_FIELD).performClick()
+        composeRule.waitForIdle()
+        node(TaskFormTags.TITLE_FIELD).performClick()
+        composeRule.waitForIdle()
+        val margin = with(composeRule.density) { 8.dp.toPx() }
+        assertTrue("title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() + margin - 1f)
+    }
+
+    @Test
+    @Config(qualifiers = "w640dp-h320dp-land")
+    fun `in landscape the focused title field is fully shown below the bar with its label, for a new task`() {
+        show(TaskFormUiState(open = true, note = longNote, focus = TaskFormField.NOTE))
+        composeRule.waitForIdle()
+        node(TaskFormTags.TITLE_FIELD).performClick()
+        composeRule.waitForIdle()
+        val margin = with(composeRule.density) { 8.dp.toPx() }
+        assertTrue(titleTop() >= barBottom() + margin - 1f)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    @Config(qualifiers = "w640dp-h320dp-land")
+    fun `in landscape at 200 percent text the label wins over the hint below the field`() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.FontScale(2f)) {
+                AppTheme { TaskFormScreen(open("a".repeat(250), longNote), recorder) }
+            }
+        }
+        node(TaskFormTags.NOTE_FIELD).performClick()
+        composeRule.waitForIdle()
+        node(TaskFormTags.TITLE_FIELD).performClick()
+        composeRule.waitForIdle()
+        assertTrue("title top ${titleTop()} bar bottom ${barBottom()}", titleTop() >= barBottom() - 1f)
+    }
+
+    @Test
+    @Config(qualifiers = "w640dp-h320dp-land")
+    fun `in landscape a freshly opened new task stands at the top with the label visible`() {
+        show(TaskFormUiState(open = true))
+        val margin = with(composeRule.density) { 8.dp.toPx() }
+        assertTrue(titleTop() >= barBottom() + margin - 1f)
+    }
 }

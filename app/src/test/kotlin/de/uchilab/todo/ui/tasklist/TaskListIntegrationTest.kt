@@ -6,7 +6,11 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
+import de.uchilab.todo.ui.taskform.TaskFormTags
 import de.uchilab.todo.R
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertFalse
@@ -276,5 +280,207 @@ class TaskListIntegrationTest {
         composeRule.waitForIdle()
 
         assertEquals("Aufgabe 24", topTitle())
+    }
+
+    // --- editing (S5) ---
+
+    private fun stored(): List<Task> = runBlocking { application.taskRepository.observeTasks().first() }
+
+    private fun count(tag: String) = composeRule.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().size
+
+    private fun openEntry(title: String) {
+        composeRule.onNodeWithText(title).performClick()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.TITLE_FIELD) == 1 }
+    }
+
+    private fun formIsGone() = count(TaskFormTags.TITLE_FIELD) == 0
+
+    private fun waitForFormGone() = composeRule.waitUntil(10_000) { formIsGone() }
+
+    private fun back() {
+        scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+    }
+
+    private fun replaceTitle(text: String) = composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).performTextReplacement(text)
+    private fun replaceNote(text: String) = composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).performTextReplacement(text)
+    private fun save() = composeRule.onNodeWithTag(TaskFormTags.SAVE).performClick()
+
+    @Test
+    fun `tapping an open or a done task opens the form with its title and note`() {
+        add("Aufgabe offen", "Notiz offen")
+        val done = add("Aufgabe erledigt", "Notiz erledigt")
+        runBlocking { application.taskRepository.setStatus(done.id, TaskStatus.DONE) }
+        launch()
+        waitForItems(2)
+
+        openEntry("Aufgabe offen")
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assert(hasText("Aufgabe offen"))
+        composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).assert(hasText("Notiz offen"))
+        back()
+        waitForFormGone()
+
+        openEntry("Aufgabe erledigt")
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assert(hasText("Aufgabe erledigt"))
+        composeRule.onNodeWithTag(TaskFormTags.NOTE_FIELD).assert(hasText("Notiz erledigt"))
+    }
+
+    @Test
+    fun `opening and closing a done task without change keeps it done`() {
+        val task = add("Aufgabe 1", "Notiz 1")
+        runBlocking { application.taskRepository.setStatus(task.id, TaskStatus.DONE) }
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        back()
+        waitForFormGone()
+        assertEquals(TaskStatus.DONE, stored().single().status)
+    }
+
+    @Test
+    fun `saving a change closes the form and the list shows the new title and note`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        replaceTitle("Aufgabe 2")
+        replaceNote("Notiz 2")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { visibleTitles() == listOf("Aufgabe 2") }
+        composeRule.onNodeWithTag(TaskListTags.ITEM_NOTE, useUnmergedTree = true).assert(hasText("Notiz 2"))
+    }
+
+    @Test
+    fun `an edited task keeps its place, creation date and status`() {
+        add("Aufgabe 1")
+        val middle = add("Aufgabe 2")
+        add("Aufgabe 3")
+        runBlocking { application.taskRepository.setStatus(middle.id, TaskStatus.DONE) }
+        val before = stored().single { it.id == middle.id }
+        launch()
+        waitForItems(3)
+        assertEquals(listOf("Aufgabe 3", "Aufgabe 1", "Aufgabe 2"), visibleTitles())
+
+        openEntry("Aufgabe 2")
+        replaceTitle("Aufgabe zwei")
+        save()
+        waitForFormGone()
+
+        composeRule.waitUntil(10_000) { visibleTitles() == listOf("Aufgabe 3", "Aufgabe 1", "Aufgabe zwei") }
+        val after = stored().single { it.id == middle.id }
+        assertEquals(TaskStatus.DONE, after.status)
+        assertEquals(before.createdAt, after.createdAt)
+    }
+
+    @Test
+    fun `clearing the note removes it from the task and from the entry`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        assertEquals(1, count(TaskListTags.ITEM_NOTE))
+        openEntry("Aufgabe 1")
+        replaceNote("")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { count(TaskListTags.ITEM_NOTE) == 0 }
+        assertEquals(null, stored().single().content.note)
+    }
+
+    @Test
+    fun `an edit stays after closing and starting the app again`() {
+        add("Aufgabe 1")
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        replaceTitle("Aufgabe 2")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { visibleTitles() == listOf("Aufgabe 2") }
+        scenario!!.close()
+
+        launch()
+        waitForItems(1)
+        assertEquals(listOf("Aufgabe 2"), visibleTitles())
+    }
+
+    @Test
+    fun `a changed form asks before closing, keep editing keeps the input, discard keeps the old version`() {
+        add("Aufgabe 1", "Notiz 1")
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        replaceTitle("Aufgabe 2")
+
+        back()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.DISCARD_DIALOG) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.DISCARD_KEEP, useUnmergedTree = true).performClick()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.DISCARD_DIALOG) == 0 }
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assert(hasText("Aufgabe 2"))
+
+        back()
+        composeRule.waitUntil(10_000) { count(TaskFormTags.DISCARD_DIALOG) == 1 }
+        composeRule.onNodeWithTag(TaskFormTags.DISCARD_CONFIRM, useUnmergedTree = true).performClick()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { visibleTitles() == listOf("Aufgabe 1") }
+        assertEquals("Aufgabe 1", stored().single().content.title)
+    }
+
+    private fun firstVisibleTitle(): String {
+        val list = composeRule.onNodeWithTag(TaskListTags.LIST).fetchSemanticsNode().boundsInRoot
+        val node = composeRule.onAllNodesWithTag(TaskListTags.ITEM_TITLE, useUnmergedTree = true).fetchSemanticsNodes()
+            .filter { it.boundsInRoot.bottom > list.top }.minBy { it.boundsInRoot.top }
+        return node.config[SemanticsProperties.Text].joinToString("")
+    }
+
+    @Test
+    fun `after saving an edit the list is at the same position as before, not at the top`() {
+        for (n in 1..30) add("Aufgabe $n")
+        launch()
+        waitForItems(1)
+        composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(10)
+        composeRule.waitForIdle()
+        val top = firstVisibleTitle()
+        assertEquals("Aufgabe 20", top)
+
+        openEntry(top)
+        replaceTitle("Aufgabe 20 neu")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Aufgabe 20 neu").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+        assertEquals("Aufgabe 20 neu", firstVisibleTitle())
+    }
+
+    @Test
+    fun `after saving an edit the live region says so politely`() {
+        add("Aufgabe 1")
+        launch()
+        waitForItems(1)
+        openEntry("Aufgabe 1")
+        replaceTitle("Aufgabe 2")
+        save()
+        waitForFormGone()
+        val announcement = { composeRule.onNodeWithTag(TaskFormTags.CREATED_ANNOUNCEMENT, useUnmergedTree = true) }
+        val saved = application.getString(R.string.task_edit_saved)
+        composeRule.waitUntil(10_000) {
+            announcement().fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription) == listOf(saved)
+        }
+        announcement().assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    }
+
+    @Test
+    fun `after saving an edit the focus is on the edited entry`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        openEntry("Aufgabe 1")
+        replaceTitle("Aufgabe eins")
+        save()
+        waitForFormGone()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Aufgabe eins").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Aufgabe eins").assertIsFocused()
     }
 }
