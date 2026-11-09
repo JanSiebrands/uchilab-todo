@@ -1,4 +1,4 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import androidx.lifecycle.SavedStateHandle
 import de.uchilab.todo.domain.Task
@@ -28,7 +28,7 @@ import org.junit.Test
 
 /** Plain JVM test with a fake repository. Invented data only. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class NewTaskViewModelTest {
+class TaskFormViewModelTest {
 
     private class FakeRepository : TaskRepository {
         val added = mutableListOf<TaskContent>()
@@ -54,13 +54,13 @@ class NewTaskViewModelTest {
 
     private val repository = FakeRepository()
     private val handle = SavedStateHandle()
-    private lateinit var viewModel: NewTaskViewModel
+    private lateinit var viewModel: TaskFormViewModel
     private val family = "👨‍👩‍👧‍👦"
 
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = NewTaskViewModel(repository, handle)
+        viewModel = TaskFormViewModel(repository, handle)
     }
 
     @After
@@ -68,7 +68,7 @@ class NewTaskViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun opened(): NewTaskViewModel = viewModel.also { it.open() }
+    private fun opened(): TaskFormViewModel = viewModel.also { it.open() }
 
     // --- opening ---
 
@@ -84,7 +84,7 @@ class NewTaskViewModelTest {
         opened()
         val state = viewModel.state
         assertTrue(state.open)
-        assertEquals(NewTaskField.TITLE, state.focus)
+        assertEquals(TaskFormField.TITLE, state.focus)
         assertFalse(state.titleMissingShown || state.saveFailed || state.discardDialog)
     }
 
@@ -170,12 +170,12 @@ class NewTaskViewModelTest {
     @Test
     fun `a missing title is not saved, shows the hint and moves the focus to the title`() {
         for (empty in listOf("", "   ")) {
-            val vm = NewTaskViewModel(repository, SavedStateHandle()).also { it.open() }
-            vm.onFocusChange(NewTaskField.NOTE)
+            val vm = TaskFormViewModel(repository, SavedStateHandle()).also { it.open() }
+            vm.onFocusChange(TaskFormField.NOTE)
             vm.onTitleChange(empty)
             vm.onSave()
             assertTrue(vm.state.titleMissingShown)
-            assertEquals(NewTaskField.TITLE, vm.state.focus)
+            assertEquals(TaskFormField.TITLE, vm.state.focus)
             assertTrue(vm.state.open)
         }
         assertTrue(repository.added.isEmpty())
@@ -209,14 +209,14 @@ class NewTaskViewModelTest {
     fun `a title above the limit is not saved and the focus goes to the first faulty field`() {
         opened().onTitleChange("a".repeat(201))
         viewModel.onNoteChange("b".repeat(2001))
-        viewModel.onFocusChange(NewTaskField.NOTE)
+        viewModel.onFocusChange(TaskFormField.NOTE)
         viewModel.onSave()
         assertTrue(repository.added.isEmpty())
-        assertEquals(NewTaskField.TITLE, viewModel.state.focus)
+        assertEquals(TaskFormField.TITLE, viewModel.state.focus)
         viewModel.onTitleChange("a")
         viewModel.onSave()
         assertTrue(repository.added.isEmpty())
-        assertEquals(NewTaskField.NOTE, viewModel.state.focus)
+        assertEquals(TaskFormField.NOTE, viewModel.state.focus)
     }
 
     // --- saving: valid ---
@@ -382,24 +382,24 @@ class NewTaskViewModelTest {
     fun `a second view model with the same saved state has text, hints, dialog and focus`() {
         opened().onTitleChange("Aufgabe 1")
         viewModel.onNoteChange("Notiz 1\nZeile 2")
-        viewModel.onFocusChange(NewTaskField.NOTE)
+        viewModel.onFocusChange(TaskFormField.NOTE)
         viewModel.onCloseRequest()
-        val restored = NewTaskViewModel(repository, handle).state
+        val restored = TaskFormViewModel(repository, handle).state
         assertTrue(restored.open)
         assertEquals("Aufgabe 1", restored.title)
         assertEquals("Notiz 1\nZeile 2", restored.note)
         assertTrue(restored.discardDialog)
-        assertEquals(NewTaskField.NOTE, restored.focus)
+        assertEquals(TaskFormField.NOTE, restored.focus)
     }
 
     @Test
     fun `hints survive a restore`() {
         opened().onSave()
-        assertTrue(NewTaskViewModel(repository, handle).state.titleMissingShown)
+        assertTrue(TaskFormViewModel(repository, handle).state.titleMissingShown)
         repository.result = { WriteResult.Failure(WriteError.STORAGE_FAILURE) }
         viewModel.onTitleChange("Aufgabe 1")
         viewModel.onSave()
-        assertTrue(NewTaskViewModel(repository, handle).state.saveFailed)
+        assertTrue(TaskFormViewModel(repository, handle).state.saveFailed)
     }
 
     @Test
@@ -409,7 +409,7 @@ class NewTaskViewModelTest {
         viewModel.onCloseRequest()
         viewModel.onDiscardConfirm()
         assertTrue(handle.keys().isEmpty())
-        assertFalse(NewTaskViewModel(repository, handle).state.open)
+        assertFalse(TaskFormViewModel(repository, handle).state.open)
     }
 
     // --- no content in text forms ---

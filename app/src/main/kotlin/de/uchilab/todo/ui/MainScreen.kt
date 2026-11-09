@@ -39,11 +39,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.uchilab.todo.R
 import de.uchilab.todo.domain.TaskId
-import de.uchilab.todo.ui.newtask.NewTaskActions
-import de.uchilab.todo.ui.newtask.NewTaskField
-import de.uchilab.todo.ui.newtask.NewTaskScreen
-import de.uchilab.todo.ui.newtask.NewTaskTags
-import de.uchilab.todo.ui.newtask.NewTaskUiState
+import de.uchilab.todo.ui.taskform.TaskFormActions
+import de.uchilab.todo.ui.taskform.TaskFormField
+import de.uchilab.todo.ui.taskform.TaskFormScreen
+import de.uchilab.todo.ui.taskform.TaskFormTags
+import de.uchilab.todo.ui.taskform.TaskFormUiState
 import de.uchilab.todo.ui.tasklist.TaskListScreen
 import de.uchilab.todo.ui.tasklist.TaskListUiState
 
@@ -56,8 +56,8 @@ import de.uchilab.todo.ui.tasklist.TaskListUiState
 fun MainScreen(
     state: TaskListUiState,
     modifier: Modifier = Modifier,
-    newTask: NewTaskUiState = NewTaskUiState(),
-    actions: NewTaskActions = NoNewTaskActions,
+    taskForm: TaskFormUiState = TaskFormUiState(),
+    actions: TaskFormActions = NoTaskFormActions,
     onNewTask: () -> Unit = {},
     createdTaskId: TaskId? = null,
     createdAnnouncement: Boolean = false,
@@ -92,8 +92,8 @@ fun MainScreen(
     }
 
     Box(modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
-        if (newTask.open) {
-            NewTaskScreen(newTask, actions)
+        if (taskForm.open) {
+            TaskFormScreen(taskForm, actions)
         } else {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
@@ -155,7 +155,7 @@ private fun NewTaskAction(onClick: () -> Unit) {
         onClick = onClick,
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.testTag(NewTaskTags.ACTION),
+        modifier = Modifier.testTag(TaskFormTags.ACTION),
     ) {
         Icon(painter = painterResource(R.drawable.ic_add), contentDescription = null)
         Spacer(Modifier.width(8.dp))
@@ -170,7 +170,7 @@ private fun CreatedAnnouncement(created: Boolean) {
     Box(
         Modifier
             .size(1.dp)
-            .testTag(NewTaskTags.CREATED_ANNOUNCEMENT)
+            .testTag(TaskFormTags.CREATED_ANNOUNCEMENT)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
                 if (text != null) contentDescription = text
@@ -178,10 +178,10 @@ private fun CreatedAnnouncement(created: Boolean) {
     )
 }
 
-object NoNewTaskActions : NewTaskActions {
+object NoTaskFormActions : TaskFormActions {
     override fun onTitleChange(raw: String) = Unit
     override fun onNoteChange(raw: String) = Unit
-    override fun onFocusChange(field: NewTaskField) = Unit
+    override fun onFocusChange(field: TaskFormField) = Unit
     override fun onSave() = Unit
     override fun onCloseRequest() = Unit
     override fun onDiscardDismiss() = Unit

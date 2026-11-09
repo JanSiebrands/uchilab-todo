@@ -1,4 +1,4 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -60,7 +60,7 @@ private const val NOTE_MIN_LINES = 4
 /** Stateless input screen: bar with close and save, the two fields, hints, save failure and the discard dialog. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NewTaskScreen(state: NewTaskUiState, actions: NewTaskActions, modifier: Modifier = Modifier) {
+fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: Modifier = Modifier) {
     if (!state.open) return
     val titleFocus = remember { FocusRequester() }
     val noteFocus = remember { FocusRequester() }
@@ -68,20 +68,20 @@ fun NewTaskScreen(state: NewTaskUiState, actions: NewTaskActions, modifier: Modi
 
     // Cursor in the title (or in the field that had the focus before rotation or process end) and the keyboard open.
     LaunchedEffect(Unit) {
-        requestFocus(state.focus ?: NewTaskField.TITLE, titleFocus, noteFocus)
+        requestFocus(state.focus ?: TaskFormField.TITLE, titleFocus, noteFocus)
         keyboard?.show()
     }
     // Later requests, e.g. the first faulty field after "Save". Not on the first composition (handled above).
     LaunchedEffect(state.focusTick) {
-        if (state.focusTick != 0) requestFocus(state.focus ?: NewTaskField.TITLE, titleFocus, noteFocus)
+        if (state.focusTick != 0) requestFocus(state.focus ?: TaskFormField.TITLE, titleFocus, noteFocus)
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize().testTag(NewTaskTags.FORM),
+        modifier = modifier.fillMaxSize().testTag(TaskFormTags.FORM),
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = actions::onCloseRequest, modifier = Modifier.testTag(NewTaskTags.CLOSE)) {
+                    IconButton(onClick = actions::onCloseRequest, modifier = Modifier.testTag(TaskFormTags.CLOSE)) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = stringResource(R.string.new_task_close),
@@ -97,7 +97,7 @@ fun NewTaskScreen(state: NewTaskUiState, actions: NewTaskActions, modifier: Modi
                     )
                 },
                 actions = {
-                    TextButton(onClick = actions::onSave, modifier = Modifier.testTag(NewTaskTags.SAVE)) {
+                    TextButton(onClick = actions::onSave, modifier = Modifier.testTag(TaskFormTags.SAVE)) {
                         Text(stringResource(R.string.new_task_save))
                     }
                 },
@@ -110,14 +110,14 @@ fun NewTaskScreen(state: NewTaskUiState, actions: NewTaskActions, modifier: Modi
     if (state.discardDialog) DiscardDialog(actions)
 }
 
-private fun requestFocus(field: NewTaskField, title: FocusRequester, note: FocusRequester) {
-    (if (field == NewTaskField.NOTE) note else title).requestFocus()
+private fun requestFocus(field: TaskFormField, title: FocusRequester, note: FocusRequester) {
+    (if (field == TaskFormField.NOTE) note else title).requestFocus()
 }
 
 @Composable
 private fun Form(
-    state: NewTaskUiState,
-    actions: NewTaskActions,
+    state: TaskFormUiState,
+    actions: TaskFormActions,
     titleFocus: FocusRequester,
     noteFocus: FocusRequester,
     padding: PaddingValues,
@@ -149,12 +149,12 @@ private fun Form(
             requiredText = stringResource(R.string.new_task_title_required),
             counter = titleCounter,
             counterTooLong = state.titleTooLong,
-            tag = NewTaskTags.TITLE_FIELD,
-            hintTag = NewTaskTags.TITLE_HINT,
-            counterTag = NewTaskTags.TITLE_COUNTER,
+            tag = TaskFormTags.TITLE_FIELD,
+            hintTag = TaskFormTags.TITLE_HINT,
+            counterTag = TaskFormTags.TITLE_COUNTER,
             singleLine = true,
             focusRequester = titleFocus,
-            onFocus = { actions.onFocusChange(NewTaskField.TITLE) },
+            onFocus = { actions.onFocusChange(TaskFormField.TITLE) },
         )
 
         val noteHint = if (state.noteTooLong) {
@@ -171,12 +171,12 @@ private fun Form(
             requiredText = null,
             counter = noteCounter,
             counterTooLong = state.noteTooLong,
-            tag = NewTaskTags.NOTE_FIELD,
-            hintTag = NewTaskTags.NOTE_HINT,
-            counterTag = NewTaskTags.NOTE_COUNTER,
+            tag = TaskFormTags.NOTE_FIELD,
+            hintTag = TaskFormTags.NOTE_HINT,
+            counterTag = TaskFormTags.NOTE_COUNTER,
             singleLine = false,
             focusRequester = noteFocus,
-            onFocus = { actions.onFocusChange(NewTaskField.NOTE) },
+            onFocus = { actions.onFocusChange(TaskFormField.NOTE) },
         )
     }
 }
@@ -266,7 +266,7 @@ private fun SaveFailedNotice() {
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag(NewTaskTags.SAVE_FAILED)
+            .testTag(TaskFormTags.SAVE_FAILED)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Assertive },
     ) {
         Row(Modifier.padding(FormPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -294,19 +294,19 @@ private fun SaveFailedNotice() {
  * The dialog lives in its own window, so the root's testTagsAsResourceId does not reach it and is set here again.
  */
 @Composable
-private fun DiscardDialog(actions: NewTaskActions) {
+private fun DiscardDialog(actions: TaskFormActions) {
     AlertDialog(
         onDismissRequest = actions::onDiscardDismiss,
-        modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag(NewTaskTags.DISCARD_DIALOG),
+        modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag(TaskFormTags.DISCARD_DIALOG),
         title = { Text(stringResource(R.string.new_task_discard_title)) },
         text = { Text(stringResource(R.string.new_task_discard_body)) },
         dismissButton = {
-            TextButton(onClick = actions::onDiscardDismiss, modifier = Modifier.testTag(NewTaskTags.DISCARD_KEEP)) {
+            TextButton(onClick = actions::onDiscardDismiss, modifier = Modifier.testTag(TaskFormTags.DISCARD_KEEP)) {
                 Text(stringResource(R.string.new_task_discard_keep))
             }
         },
         confirmButton = {
-            TextButton(onClick = actions::onDiscardConfirm, modifier = Modifier.testTag(NewTaskTags.DISCARD_CONFIRM)) {
+            TextButton(onClick = actions::onDiscardConfirm, modifier = Modifier.testTag(TaskFormTags.DISCARD_CONFIRM)) {
                 Text(stringResource(R.string.new_task_discard_confirm))
             }
         },

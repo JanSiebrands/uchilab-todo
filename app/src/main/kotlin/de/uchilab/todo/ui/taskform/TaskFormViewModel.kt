@@ -1,4 +1,4 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,11 +22,11 @@ import kotlinx.coroutines.launch
  * the end of the process in the background); [state] is written synchronously with every change so the cursor
  * does not jump. The keys are removed when the input closes. Neither the state nor any log shows title or note.
  */
-class NewTaskViewModel(
+class TaskFormViewModel(
     private val repository: TaskRepository,
     private val savedState: SavedStateHandle,
-) : ViewModel(), NewTaskActions {
-    var state: NewTaskUiState by mutableStateOf(restore())
+) : ViewModel(), TaskFormActions {
+    var state: TaskFormUiState by mutableStateOf(restore())
         private set
 
     /** Id of the task just created, until the list has scrolled to it. */
@@ -42,7 +42,7 @@ class NewTaskViewModel(
 
     fun open() {
         createdAnnouncement = false
-        update(NewTaskUiState(open = true, focus = NewTaskField.TITLE, focusTick = state.focusTick + 1))
+        update(TaskFormUiState(open = true, focus = TaskFormField.TITLE, focusTick = state.focusTick + 1))
     }
 
     fun onCreatedHandled() {
@@ -58,7 +58,7 @@ class NewTaskViewModel(
         update(copy(note = cutAtProtectionLimit(raw, MAX_NOTE_CHARS)))
     }
 
-    override fun onFocusChange(field: NewTaskField) {
+    override fun onFocusChange(field: TaskFormField) {
         if (state.focus != field) update(copy(focus = field))
     }
 
@@ -68,9 +68,9 @@ class NewTaskViewModel(
         if (validated is Validated.Invalid) {
             val reasons = validated.reasons
             val field = if (InvalidReason.TITLE_EMPTY in reasons || InvalidReason.TITLE_TOO_LONG in reasons) {
-                NewTaskField.TITLE
+                TaskFormField.TITLE
             } else {
-                NewTaskField.NOTE
+                TaskFormField.NOTE
             }
             update(
                 copy(
@@ -91,7 +91,7 @@ class NewTaskViewModel(
                     is WriteResult.Success -> {
                         createdTaskId = result.value.id
                         createdAnnouncement = true
-                        update(NewTaskUiState(focusTick = state.focusTick))
+                        update(TaskFormUiState(focusTick = state.focusTick))
                     }
                     is WriteResult.Failure -> update(copy(saveFailed = true))
                 }
@@ -117,7 +117,7 @@ class NewTaskViewModel(
         close()
     }
 
-    private fun close() = update(NewTaskUiState(focusTick = state.focusTick))
+    private fun close() = update(TaskFormUiState(focusTick = state.focusTick))
 
     private fun copy(
         title: String = state.title,
@@ -125,12 +125,12 @@ class NewTaskViewModel(
         titleMissingShown: Boolean = state.titleMissingShown,
         saveFailed: Boolean = state.saveFailed,
         discardDialog: Boolean = state.discardDialog,
-        focus: NewTaskField? = state.focus,
+        focus: TaskFormField? = state.focus,
         focusTick: Int = state.focusTick,
-    ) = NewTaskUiState(state.open, title, note, titleMissingShown, saveFailed, discardDialog, focus, focusTick)
+    ) = TaskFormUiState(state.open, title, note, titleMissingShown, saveFailed, discardDialog, focus, focusTick)
 
     /** Takes over the new state and mirrors it into the saved state; a closed input leaves no key behind. */
-    private fun update(new: NewTaskUiState) {
+    private fun update(new: TaskFormUiState) {
         state = new
         if (!new.open) {
             for (key in KEYS) savedState.remove<Any>(key)
@@ -145,16 +145,16 @@ class NewTaskViewModel(
         if (new.focus == null) savedState.remove<Any>(KEY_FOCUS) else savedState[KEY_FOCUS] = new.focus.name
     }
 
-    private fun restore(): NewTaskUiState {
-        if (savedState.get<Boolean>(KEY_OPEN) != true) return NewTaskUiState()
-        return NewTaskUiState(
+    private fun restore(): TaskFormUiState {
+        if (savedState.get<Boolean>(KEY_OPEN) != true) return TaskFormUiState()
+        return TaskFormUiState(
             open = true,
             title = savedState.get<String>(KEY_TITLE) ?: "",
             note = savedState.get<String>(KEY_NOTE) ?: "",
             titleMissingShown = savedState.get<Boolean>(KEY_TITLE_MISSING) ?: false,
             saveFailed = savedState.get<Boolean>(KEY_SAVE_FAILED) ?: false,
             discardDialog = savedState.get<Boolean>(KEY_DISCARD_DIALOG) ?: false,
-            focus = savedState.get<String>(KEY_FOCUS)?.let { name -> NewTaskField.entries.firstOrNull { it.name == name } },
+            focus = savedState.get<String>(KEY_FOCUS)?.let { name -> TaskFormField.entries.firstOrNull { it.name == name } },
         )
     }
 
@@ -190,6 +190,6 @@ class NewTaskViewModel(
         }
 
         fun factory(repository: TaskRepository) =
-            viewModelFactory { initializer { NewTaskViewModel(repository, createSavedStateHandle()) } }
+            viewModelFactory { initializer { TaskFormViewModel(repository, createSavedStateHandle()) } }
     }
 }

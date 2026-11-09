@@ -1,21 +1,21 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 import de.uchilab.todo.domain.TaskContent
 
-enum class NewTaskField { TITLE, NOTE }
+enum class TaskFormField { TITLE, NOTE }
 
 /**
  * What the input screen shows. Lengths and limits come from [TaskContent], the screen has no counting of its own.
  * [focusTick] is not saved; it makes a repeated request for the same field visible to the screen.
  */
-class NewTaskUiState(
+class TaskFormUiState(
     val open: Boolean = false,
     val title: String = "",
     val note: String = "",
     val titleMissingShown: Boolean = false,
     val saveFailed: Boolean = false,
     val discardDialog: Boolean = false,
-    val focus: NewTaskField? = null,
+    val focus: TaskFormField? = null,
     val focusTick: Int = 0,
 ) {
     val titleLength: Int = TaskContent.titleLength(title)
@@ -26,7 +26,7 @@ class NewTaskUiState(
     val noteCounterVisible: Boolean get() = noteLength >= NOTE_COUNTER_FROM
 
     /** Without title and note (security L4, privacy V5). */
-    override fun toString(): String = "NewTaskUiState(open=$open)"
+    override fun toString(): String = "TaskFormUiState(open=$open)"
 
     companion object {
         /** 80 % of the limits (design 7 and 8). */
@@ -36,10 +36,10 @@ class NewTaskUiState(
 }
 
 /** What the input screen reports back; implemented by the view model. */
-interface NewTaskActions {
+interface TaskFormActions {
     fun onTitleChange(raw: String)
     fun onNoteChange(raw: String)
-    fun onFocusChange(field: NewTaskField)
+    fun onFocusChange(field: TaskFormField)
     fun onSave()
     fun onCloseRequest()
     fun onDiscardDismiss()

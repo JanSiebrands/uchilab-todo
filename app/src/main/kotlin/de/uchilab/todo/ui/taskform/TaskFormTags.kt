@@ -1,7 +1,7 @@
-package de.uchilab.todo.ui.newtask
+package de.uchilab.todo.ui.taskform
 
 /** Test tags of the new-task flow. Fixed identifiers only, never content (they are visible to automation as resource ids). */
-object NewTaskTags {
+object TaskFormTags {
     const val ACTION = "new_task_action"
     const val FORM = "new_task_form"
     const val TITLE_FIELD = "new_task_title"
