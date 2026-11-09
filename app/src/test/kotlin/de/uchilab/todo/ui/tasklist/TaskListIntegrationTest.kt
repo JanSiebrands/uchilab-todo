@@ -539,6 +539,8 @@ class TaskListIntegrationTest {
         waitForItems(2)
         openEntry("Aufgabe 1")
         replaceTitle("")
+        replaceNote("Notiz")
+        composeRule.waitUntil(10_000) { focused(TaskFormTags.NOTE_FIELD) }
         save()
         composeRule.waitUntil(10_000) { focused(TaskFormTags.TITLE_FIELD) }
         replaceTitle("Aufgabe eins")
