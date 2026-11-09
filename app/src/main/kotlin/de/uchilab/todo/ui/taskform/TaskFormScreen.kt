@@ -85,8 +85,9 @@ fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: M
         keyboard?.show()
     }
     // Later requests, e.g. the first faulty field after "Save". Not on the first composition (handled above).
+    val firstTick = remember { state.focusTick }
     LaunchedEffect(state.focusTick) {
-        if (state.focusTick != 0) requestFocus(state.focus ?: TaskFormField.TITLE, titleFocus, noteFocus)
+        if (state.focusTick != firstTick) requestFocus(state.focus ?: TaskFormField.TITLE, titleFocus, noteFocus)
     }
 
     Scaffold(
