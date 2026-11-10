@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Working title; the final name (Kerbholz) follows in story S12. Same text in both languages. -->
     <string name="app_name">uchilab-todo</string>
 
@@ -50,4 +50,20 @@
     <string name="task_status_announce_done">“%1$s” done</string>
     <string name="task_status_announce_open">“%1$s” open again</string>
     <string name="task_status_save_failed">Status not saved. The task hasn’t changed, please try again.</string>
+    <string name="task_list_hide_done">Hide</string>
+    <string name="task_list_show_done">Show</string>
+    <!-- Spoken only: description of the button in the done row. -->
+    <string name="task_list_hide_done_description">Hide done tasks</string>
+    <string name="task_list_show_done_description">Show done tasks</string>
+    <!-- Second line under the done heading while hidden, %1$d = number of hidden tasks. -->
+    <string name="task_list_done_hidden_count" tools:ignore="PluralsCandidate">%1$d hidden</string>
+    <string name="task_list_all_hidden_title">All done</string>
+    <plurals name="task_list_all_hidden_body">
+        <item quantity="one">%1$d done task is hidden.</item>
+        <item quantity="other">%1$d done tasks are hidden.</item>
+    </plurals>
+    <string name="task_list_all_hidden_show">Show done tasks</string>
+    <!-- Hint after checking off while done tasks are hidden, %1$s = title. -->
+    <string name="task_done_hidden">“%1$s” done and hidden</string>
+    <string name="task_list_setting_save_failed">Setting not saved. The list hasn’t changed, please try again.</string>
 </resources>

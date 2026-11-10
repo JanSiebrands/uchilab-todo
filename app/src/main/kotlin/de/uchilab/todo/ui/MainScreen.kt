@@ -22,6 +22,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import de.uchilab.todo.domain.TaskStatus
+import de.uchilab.todo.ui.tasklist.ListNotice
 import de.uchilab.todo.ui.tasklist.StatusChange
 import de.uchilab.todo.ui.tasklist.TaskListTags
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -69,8 +70,9 @@ fun MainScreen(
     editedTaskId: TaskId? = null,
     onEditedHandled: () -> Unit = {},
     onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> },
-    statusSaveFailed: Boolean = false,
-    onStatusSaveFailedShown: () -> Unit = {},
+    onHideDoneChange: (Boolean) -> Unit = {},
+    notice: ListNotice? = null,
+    onNoticeShown: (ListNotice) -> Unit = {},
     statusAnnouncement: StatusChange? = null,
 ) {
     // Outside the branch on the state, so a position restored after a process restart is applied
@@ -96,13 +98,15 @@ fun MainScreen(
         }
     }
 
-    // The failure notice: long, without action, above the "New task" action (the host sits in the Scaffold).
+    // One hint at a time above the "New task" action (the host sits in the Scaffold), without action. A newer hint
+    // restarts the effect, which dismisses the one on screen.
     val snackbarHostState = remember { SnackbarHostState() }
-    val failedText = stringResource(R.string.task_status_save_failed)
-    LaunchedEffect(statusSaveFailed) {
-        if (statusSaveFailed) {
-            snackbarHostState.showSnackbar(failedText, duration = SnackbarDuration.Long)
-            onStatusSaveFailedShown()
+    val noticeText = noticeText(state, notice)
+    LaunchedEffect(notice, noticeText) {
+        if (notice != null && noticeText != null) {
+            val duration = if (notice is ListNotice.DoneHidden) SnackbarDuration.Short else SnackbarDuration.Long
+            snackbarHostState.showSnackbar(noticeText, duration = duration)
+            onNoticeShown(notice)
         }
     }
 
@@ -131,13 +135,24 @@ fun MainScreen(
                 },
                 floatingActionButton = { if (state is TaskListUiState.Loaded) NewTaskAction(onNewTask) },
             ) { padding ->
-                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding), onOpenTask, editedTaskId)
+                TaskListScreen(state, listState, onStatusChange, Modifier.padding(padding), onOpenTask, editedTaskId, onHideDoneChange)
             }
         }
         FormAnnouncementNode(announcement)
         StatusAnnouncement(statusAnnouncementText(state, statusAnnouncement))
     }
 }
+
+/** The text of a hint; for [ListNotice.DoneHidden] the title comes from the loaded list, `null` while it is not there yet. */
+@Composable
+private fun noticeText(state: TaskListUiState, notice: ListNotice?): String? =
+    when (notice) {
+        null -> null
+        ListNotice.StatusSaveFailed -> stringResource(R.string.task_status_save_failed)
+        ListNotice.SettingSaveFailed -> stringResource(R.string.task_list_setting_save_failed)
+        is ListNotice.DoneHidden -> (state as? TaskListUiState.Loaded)?.done?.firstOrNull { it.id == notice.id }
+            ?.let { stringResource(R.string.task_done_hidden, it.content.title) }
+    }
 
 /** The spoken text for the last saved change; the title comes from the loaded list, not from the change. */
 @Composable

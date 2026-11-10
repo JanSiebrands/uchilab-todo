@@ -1,4 +1,4 @@
-<!-- Quelle: Paperclip-Dokument `vorgaben` in UCH-41 (DSGVO), Stand 2026-11-06. Volltext, unverändert übernommen. -->
+<!-- Quelle: Paperclip-Dokument `vorgaben` in UCH-41 (DSGVO), Stand 2026-11-06, ergänzt durch UCH-162, Stand 2026-11-11. Volltext, unverändert übernommen. -->
 # Datenschutzvorgaben: gespeicherte Daten der Todo-App
 
 Stand 2026-11-06, DSGVO ([UCH-41](/UCH/issues/UCH-41)). Gilt ab S2 ([UCH-31](/UCH/issues/UCH-31)) für alle Stories der Todo-App. Das sind Vorgaben für die Umsetzung, keine Rechtsberatung.
@@ -26,7 +26,7 @@ flowchart LR
 **Prüfung:** Pipeline (P3, neu). Speicher-Berechtigungen verhindert schon die bestehende Berechtigungs-Allowlist.
 
 ### V2 Datenminimierung: nur die genannten Felder
-**Vorgabe:** Gespeichert werden nur die fünf Felder aus der Ausgangslage. Kein Änderungsverlauf, keine weiteren Zeitstempel, keine Geräte-, Nutzungs- oder Standortdaten, keine Statistik. Jedes weitere gespeicherte Feld, auch Einstellungen, ist ein Anlass für DSGVO (V7).
+**Vorgabe:** Gespeichert werden nur die fünf Felder aus der Ausgangslage. Dazu kommt seit S7 (UCH-159, UCH-162) genau eine Einstellung: ob erledigte Aufgaben ausgeblendet sind, ohne Zeitstempel oder Zähler (V2a). Wo sie liegt, steht in `gespeicherte-felder.md` unter „Einstellungen“. Kein Änderungsverlauf, keine weiteren Zeitstempel, keine Geräte-, Nutzungs- oder Standortdaten, keine Statistik. Jedes weitere gespeicherte Feld, auch Einstellungen, ist ein Anlass für DSGVO (V7).
 **Begründung:** Was nicht gespeichert wird, muss nicht geschützt, erklärt oder gelöscht werden (Art. 5 Abs. 1 lit. c).
 **Prüfung:** Review (P4, seit UCH-124): Das Schema wird mit dem Room-Schema-Export unter `app/schemas/` abgelegt. Die Liste der gespeicherten Felder steht in `docs/datenschutz/gespeicherte-felder.md` und wird bei jeder Schema-Änderung im selben PR nachgezogen; das sehe ich in meiner Stufe. Eine Pipeline-Prüfung der Feldliste gibt es nicht mehr (Regeln aus UCH-116, ADR 0002 Entscheidung 10).
 
@@ -79,7 +79,7 @@ Seit UCH-124 (Regeln aus UCH-116): Die Gegenprobe einer Prüfregel ist ihr Unit-
 | P1 | Backup-Regeln und Berechtigungs-Allowlist (`privacyCheck`) | `BackupRulesCheckTest`, `ManifestCheckTest` | besteht |
 | P2 | Keine Log-Aufrufe in `app/src/main` (`android.util.Log`, `println(`, `printStackTrace(`, Logging-Bibliotheken) | `SourceCheckTest` (`Log.d` und alle weiteren Fälle) | besteht |
 | P3 | Keine Speicher-APIs außerhalb des app-privaten internen Speichers in `app/src/main` (Liste aus V1) | `SourceCheckTest` (`getExternalFilesDir`, `createDeviceProtectedStorageContext` und weitere) | besteht |
-| P4 | Gespeicherte Felder: keine Pipeline-Prüfung, sondern Anlass im Review (seit UCH-124). Berührt der Diff einer Story `app/schemas/**` oder eine Klasse mit `@Entity`, `@Database` oder `@Dao`, ist das ein Anlass für Security und DSGVO. Der Architekt prüft das in jedem Story-Review mit `git diff --name-only <merge-base> <sha> -- app/schemas` und `git grep -lE '@(Entity\|Database\|Dao)\b' <sha> -- app/src/main` im Abgleich mit dem Diff. Fehlt dann das Unter-Issue für Security und DSGVO, ist das **blockierend**. Der PO nennt den Anlass im Feature-Issue unter „gespeicherte Daten“. | – | Review |
+| P4 | Gespeicherte Felder: keine Pipeline-Prüfung, sondern Anlass im Review (seit UCH-124). Berührt der Diff einer Story `app/schemas/**` oder eine Klasse mit `@Entity`, `@Database` oder `@Dao`, ist das ein Anlass für Security und DSGVO. Der Architekt prüft das in jedem Story-Review mit `git diff --name-only <merge-base> <sha> -- app/schemas` und `git grep -lE '@(Entity\|Database\|Dao)\b' <sha> -- app/src/main` im Abgleich mit dem Diff. Fehlt dann das Unter-Issue für Security und DSGVO, ist das **blockierend**. Anlass ist auch ein Diff, der eine Einstellung speichert: Treffer von `git grep -nE 'getSharedPreferences\|PreferenceManager\|preferencesDataStore\|DataStore<\|dataStore' <sha> -- app/src/main` im Diff. Der PO nennt den Anlass im Feature-Issue unter „gespeicherte Daten“. | – | Review |
 
 P2 und P3 sind Textprüfungen in `SourceCheck`, der Exit-Code von `privacyCheck` entscheidet.
 

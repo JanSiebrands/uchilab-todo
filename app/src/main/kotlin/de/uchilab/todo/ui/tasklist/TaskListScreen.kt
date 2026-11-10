@@ -17,7 +17,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -58,7 +66,9 @@ private val EntryHorizontalPadding = 16.dp
 private val EntryVerticalPadding = 12.dp
 private val CheckboxStartPadding = 4.dp
 private val TextStartPadding = 4.dp
-private val HeadingMinHeight = 48.dp
+private val DoneRowMinHeight = 56.dp
+private val DoneRowEndPadding = 8.dp
+private val TouchTarget = 48.dp
 private const val DONE_HEADING_KEY = "done_heading"
 
 /** Space below the list so the later "New task" action never covers the last entry (design 1). */
@@ -77,14 +87,15 @@ fun TaskListScreen(
     modifier: Modifier = Modifier,
     onOpenTask: (Task) -> Unit = {},
     focusTaskId: TaskId? = null,
+    onHideDoneChange: (Boolean) -> Unit = {},
 ) {
     when (state) {
         TaskListUiState.Loading -> Box(modifier.fillMaxSize())
         is TaskListUiState.Loaded ->
-            if (state.open.isEmpty() && state.done.isEmpty()) {
-                EmptyState(modifier)
-            } else {
-                TaskList(state, listState, onStatusChange, onOpenTask, focusTaskId, modifier)
+            when {
+                state.open.isEmpty() && state.done.isEmpty() -> EmptyState(modifier)
+                state.open.isEmpty() && state.hideDone -> AllHiddenState(state.done.size, onHideDoneChange, modifier)
+                else -> TaskList(state, listState, onStatusChange, onOpenTask, focusTaskId, onHideDoneChange, modifier)
             }
         TaskListUiState.ReadFailed -> ReadFailedState(modifier)
     }
@@ -97,21 +108,34 @@ private fun TaskList(
     onStatusChange: (TaskId, TaskStatus) -> Unit,
     onOpenTask: (Task) -> Unit,
     focusTaskId: TaskId?,
+    onHideDoneChange: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
     KeepPositionWhenTasksMove(state, listState)
+    val checkOffFocus = rememberFocusAfterCheckOff(state)
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize().testTag(TaskListTags.LIST),
         contentPadding = PaddingValues(bottom = ListBottomPadding),
     ) {
         items(state.open, key = { it.id.value }) { task ->
-            TaskRow(task, onStatusChange, onOpenTask, focusTaskId == task.id, Modifier.animateItem())
+            val focus = focusTaskId == task.id || checkOffFocus == FocusTarget.Entry(task.id)
+            TaskRow(task, onStatusChange, onOpenTask, focus, Modifier.animateItem())
         }
         if (state.done.isNotEmpty()) {
-            item(key = DONE_HEADING_KEY) { DoneHeading(Modifier.animateItem()) }
-            items(state.done, key = { it.id.value }) { task ->
-                TaskRow(task, onStatusChange, onOpenTask, focusTaskId == task.id, Modifier.animateItem())
+            item(key = DONE_HEADING_KEY) {
+                DoneHeading(
+                    doneCount = state.done.size,
+                    hideDone = state.hideDone,
+                    onToggle = { onHideDoneChange(!state.hideDone) },
+                    requestFocus = checkOffFocus == FocusTarget.Toggle,
+                    modifier = Modifier.animateItem(),
+                )
+            }
+            if (!state.hideDone) {
+                items(state.done, key = { it.id.value }) { task ->
+                    TaskRow(task, onStatusChange, onOpenTask, focusTaskId == task.id, Modifier.animateItem())
+                }
             }
         }
     }
@@ -137,20 +161,91 @@ private fun KeepPositionWhenTasksMove(state: TaskListUiState.Loaded, listState: 
     previous[0] = ids
 }
 
+/** Where the focus goes after a task was checked off while done tasks are hidden (design A4). */
+private sealed interface FocusTarget {
+    data class Entry(val id: TaskId) : FocusTarget
+
+    data object Toggle : FocusTarget
+}
+
+/**
+ * When an open task leaves the open group because it became done, while done tasks are hidden, the focus would
+ * be lost with it. The target is the open task that now stands at its place, otherwise the button of the done
+ * row. Without open tasks the "all done" state follows and announces itself. The target is handed out for the
+ * time the request needs to be applied.
+ */
 @Composable
-private fun DoneHeading(modifier: Modifier) {
-    Text(
-        text = stringResource(R.string.task_list_done_heading),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier
+private fun rememberFocusAfterCheckOff(state: TaskListUiState.Loaded): FocusTarget? {
+    val openIds = state.open.map { it.id }
+    val previous = remember { arrayOf<List<TaskId>?>(null) }
+    var target by remember { mutableStateOf<FocusTarget?>(null) }
+    LaunchedEffect(openIds, state.hideDone) {
+        val before = previous[0]
+        previous[0] = openIds
+        val gone = before?.filter { it !in openIds }?.singleOrNull()
+        if (gone != null && state.hideDone && state.done.any { it.id == gone }) {
+            target = openIds.getOrNull(before.indexOf(gone))?.let { FocusTarget.Entry(it) }
+                ?: FocusTarget.Toggle.takeIf { openIds.isNotEmpty() }
+        }
+    }
+    LaunchedEffect(target) {
+        if (target != null) {
+            withFrameNanos { }
+            target = null
+        }
+    }
+    return target
+}
+
+/** Heading with the number of hidden tasks while hidden, and the button that shows or hides the done tasks. */
+@Composable
+private fun DoneHeading(
+    doneCount: Int,
+    hideDone: Boolean,
+    onToggle: () -> Unit,
+    requestFocus: Boolean,
+    modifier: Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    if (requestFocus) LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val buttonDescription = stringResource(if (hideDone) R.string.task_list_show_done_description else R.string.task_list_hide_done_description)
+    Row(
+        modifier
             .fillMaxWidth()
-            .testTag(TaskListTags.DONE_HEADING)
-            .semantics { heading() }
-            .heightIn(min = HeadingMinHeight)
-            .wrapContentHeight(Alignment.CenterVertically)
-            .padding(horizontal = EntryHorizontalPadding),
-    )
+            .heightIn(min = DoneRowMinHeight)
+            .padding(start = EntryHorizontalPadding, end = DoneRowEndPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            Modifier
+                .weight(1f)
+                .testTag(TaskListTags.DONE_HEADING)
+                .semantics(mergeDescendants = true) { heading() },
+        ) {
+            Text(
+                text = stringResource(R.string.task_list_done_heading),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (hideDone) {
+                Text(
+                    text = stringResource(R.string.task_list_done_hidden_count, doneCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        TextButton(
+            onClick = onToggle,
+            modifier = Modifier
+                .defaultMinSize(minWidth = TouchTarget, minHeight = TouchTarget)
+                .testTag(TaskListTags.DONE_TOGGLE)
+                .focusRequester(focusRequester)
+                .semantics { contentDescription = buttonDescription },
+        ) {
+            Text(stringResource(if (hideDone) R.string.task_list_show_done else R.string.task_list_hide_done))
+        }
+    }
 }
 
 @Composable
@@ -250,6 +345,27 @@ private fun EmptyState(modifier: Modifier) {
     )
 }
 
+/** Every task is done and hidden: not the empty state, and the way back is right here (design A3). */
+@Composable
+private fun AllHiddenState(doneCount: Int, onHideDoneChange: (Boolean) -> Unit, modifier: Modifier) {
+    Notice(
+        icon = R.drawable.ic_task_list_all_done,
+        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+        title = stringResource(R.string.task_list_all_hidden_title),
+        body = pluralStringResource(R.plurals.task_list_all_hidden_body, doneCount, doneCount),
+        modifier = modifier,
+        contentModifier = Modifier.testTag(TaskListTags.ALL_HIDDEN).semantics { liveRegion = LiveRegionMode.Polite },
+        action = {
+            FilledTonalButton(
+                onClick = { onHideDoneChange(false) },
+                modifier = Modifier.padding(top = 16.dp).heightIn(min = TouchTarget).testTag(TaskListTags.ALL_HIDDEN_SHOW),
+            ) {
+                Text(stringResource(R.string.task_list_all_hidden_show))
+            }
+        },
+    )
+}
+
 @Composable
 private fun ReadFailedState(modifier: Modifier) {
     Notice(
@@ -272,6 +388,7 @@ private fun Notice(
     modifier: Modifier,
     contentModifier: Modifier,
     hint: String? = null,
+    action: (@Composable () -> Unit)? = null,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val minHeight = maxHeight
@@ -313,6 +430,7 @@ private fun Notice(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
+            action?.invoke()
         }
     }
 }
