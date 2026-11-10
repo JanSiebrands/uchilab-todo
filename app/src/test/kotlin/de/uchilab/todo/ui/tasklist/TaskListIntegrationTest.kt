@@ -25,7 +25,11 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import de.uchilab.todo.TodoApplication
+import de.uchilab.todo.data.SharedPreferencesListSettings
 import de.uchilab.todo.data.TaskDatabase
+import java.io.File
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
 import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskContent
 import de.uchilab.todo.domain.TaskStatus
@@ -580,5 +584,262 @@ class TaskListIntegrationTest {
         openNewTask()
         composeRule.waitUntil(10_000) { focused(TaskFormTags.TITLE_FIELD) }
         composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).assertIsFocused()
+    }
+
+    // --- hiding done tasks (S7); real Room file and the real setting ---
+
+    private fun addDone(title: String): Task =
+        add(title).also { runBlocking { application.taskRepository.setStatus(it.id, TaskStatus.DONE) } }
+
+    private fun hideDoneBeforeStart() {
+        assertTrue(runBlocking { application.listSettings.setHideDone(true) } is WriteResult.Success)
+    }
+
+    private fun toggle() = composeRule.onNodeWithTag(TaskListTags.DONE_TOGGLE)
+
+    private fun waitForToggle() = composeRule.waitUntil(10_000) { count(TaskListTags.DONE_TOGGLE) == 1 }
+
+    private fun toggleDescription() =
+        composeRule.onNodeWithTag(TaskListTags.DONE_TOGGLE).fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
+
+    private fun hideDescription() = listOf(application.getString(R.string.task_list_hide_done_description))
+    private fun showDescription() = listOf(application.getString(R.string.task_list_show_done_description))
+
+    /** What a fresh reader of the stored file sees, not the instance the app holds. */
+    private fun storedHideDone() = runBlocking { SharedPreferencesListSettings(application).hideDone.first() }
+
+    // Z1
+    @Test
+    fun `hiding leaves only the open tasks in their order`() {
+        add("Offen 1"); add("Offen 2"); add("Offen 3"); addDone("Fertig 1"); addDone("Fertig 2")
+        launch()
+        waitForItems(5)
+        waitForToggle()
+
+        toggle().performClick()
+
+        waitForTitles(listOf("Offen 3", "Offen 2", "Offen 1"))
+    }
+
+    // Z2
+    @Test
+    fun `showing again lists open tasks, the row and the done tasks as before`() {
+        add("Offen 1"); add("Offen 2"); addDone("Fertig 1"); addDone("Fertig 2")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(2)
+        waitForToggle()
+        assertEquals(listOf("Offen 2", "Offen 1"), visibleTitles())
+
+        toggle().performClick()
+
+        waitForTitles(listOf("Offen 2", "Offen 1", "Fertig 2", "Fertig 1"))
+        val heading = composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).fetchSemanticsNode().boundsInRoot
+        val titles = composeRule.onAllNodesWithTag(TaskListTags.ITEM_TITLE, useUnmergedTree = true).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
+        assertTrue(titles[1].boundsInRoot.bottom <= heading.top && heading.bottom <= titles[2].boundsInRoot.top)
+    }
+
+    // Z3
+    @Test
+    fun `hidden and shown both stay after closing and starting the app again`() {
+        add("Offen 1"); addDone("Fertig 1")
+        launch()
+        waitForItems(2)
+        waitForToggle()
+        toggle().performClick()
+        waitForTitles(listOf("Offen 1"))
+        scenario!!.close()
+
+        launch()
+        waitForItems(1)
+        waitForToggle()
+        assertEquals(listOf("Offen 1"), visibleTitles())
+        assertEquals(showDescription(), toggleDescription())
+        toggle().performClick()
+        waitForTitles(listOf("Offen 1", "Fertig 1"))
+        composeRule.waitUntil(10_000) { !storedHideDone() }
+        scenario!!.close()
+
+        launch()
+        waitForItems(2)
+        assertEquals(listOf("Offen 1", "Fertig 1"), visibleTitles())
+    }
+
+    // Z6
+    @Test
+    fun `an update without a stored setting shows the done tasks and the button to hide them`() {
+        add("Offen 1"); addDone("Fertig 1")
+        assertFalse(File(application.dataDir, "shared_prefs/list_settings.xml").exists())
+        launch()
+        waitForItems(2)
+        waitForToggle()
+        assertEquals(listOf("Offen 1", "Fertig 1"), visibleTitles())
+        assertEquals(hideDescription(), toggleDescription())
+    }
+
+    // Z7
+    @Test
+    fun `checking off while hidden removes the entry, stores it as done and shows the hint`() {
+        add("Offen 1"); add("Offen 2"); addDone("Fertig 1")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(2)
+
+        tapCheckboxOf("Offen 2")
+
+        waitForTitles(listOf("Offen 1"))
+        assertEquals(TaskStatus.DONE, stored().single { it.content.title == "Offen 2" }.status)
+        // Z8 in the real app: the hint names the task instead of the spoken announcement
+        composeRule.waitUntil(10_000) {
+            count(TaskListTags.STATUS_SNACKBAR) == 1
+        }
+        composeRule.onNodeWithText(application.getString(R.string.task_done_hidden, "Offen 2")).assertIsDisplayed()
+        val announcement = composeRule.onNodeWithTag(TaskListTags.STATUS_ANNOUNCEMENT, useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals(null, announcement.config.getOrNull(SemanticsProperties.ContentDescription))
+    }
+
+    // Z11
+    @Test
+    fun `a new task while everything is done and hidden stands on top and ends the all done state`() {
+        addDone("Fertig 1")
+        hideDoneBeforeStart()
+        launch()
+        composeRule.waitUntil(10_000) { count(TaskListTags.ALL_HIDDEN) == 1 }
+        openNewTask()
+        composeRule.onNodeWithTag(TaskFormTags.TITLE_FIELD).performTextReplacement("Neue Aufgabe")
+        save()
+        waitForFormGone()
+
+        composeRule.waitUntil(10_000) { visibleTitles().firstOrNull() == "Neue Aufgabe" }
+        assertEquals(0, count(TaskListTags.ALL_HIDDEN))
+        waitForToggle()
+    }
+
+    // Z12
+    /**
+     * Open tasks come first, so the row follows the open entries. From index 25 five open entries stand above it:
+     * the row is in view above the "New task" button, and the list stays long enough that hiding needs no correction.
+     * With the done tasks hidden the list is shorter, the end of the list lies on screen and the row sits above the button.
+     */
+    private fun scrollRowIntoView(index: Int) {
+        composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(index)
+        composeRule.waitForIdle()
+        waitForToggle()
+        toggle().assertIsDisplayed()
+    }
+
+    @Test
+    fun `hiding does not move the list when the done row is in view`() {
+        for (n in 1..5) addDone("Fertig $n")
+        for (n in 1..30) add("Aufgabe $n")
+        launch()
+        waitForItems(1)
+        scrollRowIntoView(25)
+        val top = firstVisibleTitle()
+
+        toggle().performClick()
+        composeRule.waitUntil(10_000) { visibleTitles().none { it.startsWith("Fertig") } }
+        composeRule.waitForIdle()
+
+        assertEquals(top, firstVisibleTitle())
+    }
+
+    @Test
+    fun `showing does not move the list when the done row is in view`() {
+        for (n in 1..5) addDone("Fertig $n")
+        for (n in 1..30) add("Aufgabe $n")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(1)
+        scrollRowIntoView(29)
+        val top = firstVisibleTitle()
+
+        toggle().performClick()
+        composeRule.waitUntil(10_000) { visibleTitles().any { it.startsWith("Fertig") } }
+        composeRule.waitForIdle()
+
+        assertEquals(top, firstVisibleTitle())
+    }
+
+    // Z15
+    @Test
+    fun `after tapping the button the focus is still on it`() {
+        add("Offen 1"); addDone("Fertig 1")
+        launch()
+        waitForItems(2)
+        waitForToggle()
+        toggle().performSemanticsAction(SemanticsActions.RequestFocus)
+        toggle().assertIsFocused()
+
+        toggle().performClick()
+        composeRule.waitUntil(10_000) { visibleTitles() == listOf("Offen 1") }
+        composeRule.waitForIdle()
+
+        toggle().assertIsFocused()
+        assertEquals(showDescription(), toggleDescription())
+    }
+
+    // Z16
+    @Test
+    fun `checking off while hidden moves the focus to the entry that takes its place`() {
+        add("Offen 1"); add("Offen 2"); add("Offen 3"); addDone("Fertig 1")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(3)
+
+        tapCheckboxOf("Offen 2")
+        waitForTitles(listOf("Offen 3", "Offen 1"))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Offen 1").assertIsFocused()
+    }
+
+    @Test
+    fun `checking off the last open entry while hidden moves the focus to the button of the done row`() {
+        add("Offen 1"); add("Offen 2"); addDone("Fertig 1")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(2)
+
+        tapCheckboxOf("Offen 1")
+        waitForTitles(listOf("Offen 2"))
+        composeRule.waitForIdle()
+
+        toggle().assertIsFocused()
+    }
+
+    // Z20
+    @Test
+    fun `tapping five times in a row ends with the list equal to the stored setting`() {
+        add("Offen 1"); addDone("Fertig 1")
+        launch()
+        waitForItems(2)
+        waitForToggle()
+
+        repeat(5) { toggle().performClick() }
+        composeRule.waitUntil(10_000) { toggleDescription() == if (storedHideDone()) showDescription() else hideDescription() }
+        composeRule.waitForIdle()
+
+        val hidden = storedHideDone()
+        assertEquals(if (hidden) showDescription() else hideDescription(), toggleDescription())
+        assertEquals(if (hidden) listOf("Offen 1") else listOf("Offen 1", "Fertig 1"), visibleTitles())
+    }
+
+    // Z25
+    @Test
+    fun `turning the screen keeps the setting and the list`() {
+        add("Offen 1"); addDone("Fertig 1")
+        launch()
+        waitForItems(2)
+        waitForToggle()
+        toggle().performClick()
+        waitForTitles(listOf("Offen 1"))
+
+        scenario!!.recreate()
+        waitForItems(1)
+        waitForToggle()
+
+        assertEquals(listOf("Offen 1"), visibleTitles())
+        assertEquals(showDescription(), toggleDescription())
     }
 }

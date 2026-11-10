@@ -41,6 +41,9 @@ class StringResourcesTest {
         "new_task_note_too_long", "new_task_counter", "new_task_counter_description", "new_task_save_failed_title",
         "new_task_save_failed_body", "new_task_discard_title", "new_task_discard_body", "new_task_discard_keep",
         "new_task_discard_confirm", "new_task_created",
+        "task_list_hide_done", "task_list_show_done", "task_list_hide_done_description", "task_list_show_done_description",
+        "task_list_done_hidden_count", "task_list_all_hidden_title", "task_list_all_hidden_show", "task_done_hidden",
+        "task_list_setting_save_failed",
     )
 
     @Test
@@ -91,6 +94,42 @@ class StringResourcesTest {
             val text = strings(dir).getValue("task_item_description")
             assertTrue("$dir: title placeholder", text.contains("%1\$s"))
             assertTrue("$dir: note placeholder", text.contains("%2\$s"))
+        }
+    }
+
+    private fun plurals(dir: String): Map<String, Map<String, String>> {
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(File("src/main/res/$dir/strings.xml"))
+        val nodes = doc.getElementsByTagName("plurals")
+        return (0 until nodes.length).associate { index ->
+            val node = nodes.item(index)
+            val items = (node as org.w3c.dom.Element).getElementsByTagName("item")
+            node.attributes.getNamedItem("name").nodeValue to
+                (0 until items.length).associate { items.item(it).attributes.getNamedItem("quantity").nodeValue to items.item(it).textContent }
+        }
+    }
+
+    @Test
+    fun `german and english define the same plurals with the same quantities and none is blank`() {
+        val english = plurals("values")
+        val german = plurals("values-de")
+        assertTrue("no plurals defined", english.isNotEmpty())
+        assertEquals(english.keys, german.keys)
+        for (name in english.keys) {
+            assertEquals("quantities of $name", english.getValue(name).keys, german.getValue(name).keys)
+            for ((dir, texts) in listOf("values" to english, "values-de" to german)) {
+                for ((quantity, text) in texts.getValue(name)) {
+                    assertTrue("$dir $name/$quantity is blank", text.isNotBlank())
+                    assertTrue("$dir $name/$quantity has no number placeholder", text.contains("%1\$d"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the hidden count text takes its number by placeholder in both languages`() {
+        for (dir in listOf("values", "values-de")) {
+            assertTrue(dir, strings(dir).getValue("task_list_done_hidden_count").contains("%1\$d"))
+            assertTrue(dir, strings(dir).getValue("task_done_hidden").contains("%1\$s"))
         }
     }
 }
