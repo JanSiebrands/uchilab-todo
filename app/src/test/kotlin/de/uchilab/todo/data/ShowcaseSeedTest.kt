@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
  * identifiers. Output per language: <dir>/<de|en>/tasks.db, titles.txt (titles in list order, newest first) and
  * tasks.json (title and note in list order, for the note check on the emulator).
  * Additionally (UCH-130, plan UCH-122 Z27-Z29) seeds with done tasks, marked done via TaskRepository.setStatus:
- * done-de/ and done-en/ (open and done mixed) and all-done-en/ (only done tasks), same files.
+ * done-de/ and done-en/ (open and done mixed) and all-done-en/, all-done-de/ (only done tasks, UCH-168), same files.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -124,6 +124,14 @@ class ShowcaseSeedTest {
                     "Water the balcony plants" to null,
                 ),
                 setOf("Take the bottles to recycling", "Book a dentist appointment", "Water the balcony plants"),
+            ),
+            "all-done-de" to Pair(
+                listOf(
+                    "Altglas wegbringen" to null,
+                    "Zahnarzttermin vereinbaren" to "Vormittags passt am besten",
+                    "Balkonpflanzen gießen" to null,
+                ),
+                setOf("Altglas wegbringen", "Zahnarzttermin vereinbaren", "Balkonpflanzen gießen"),
             ),
         )
     }
