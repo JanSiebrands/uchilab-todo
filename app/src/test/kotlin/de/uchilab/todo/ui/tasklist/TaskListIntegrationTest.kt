@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.performTextReplacement
 import de.uchilab.todo.ui.taskform.TaskFormTags
 import de.uchilab.todo.R
@@ -841,5 +843,252 @@ class TaskListIntegrationTest {
 
         assertEquals(listOf("Offen 1"), visibleTitles())
         assertEquals(showDescription(), toggleDescription())
+    }
+
+    // --- delete with undo (S8) ---
+
+    private fun deleteViaForm(title: String) {
+        openEntry(title)
+        composeRule.onNodeWithTag(TaskFormTags.DELETE).performClick()
+        waitForFormGone()
+    }
+
+    private fun deletedText(title: String) = application.getString(R.string.task_deleted, title)
+    private fun undoNode() = composeRule.onNodeWithText(application.getString(R.string.task_undo_action))
+    private fun waitForSnackbar() = composeRule.waitUntil(10_000) { count(TaskListTags.STATUS_SNACKBAR) == 1 }
+    private fun waitForTitleInStore(title: String, present: Boolean) =
+        composeRule.waitUntil(10_000) { stored().any { it.content.title == title } == present }
+
+    private fun tapUndo() {
+        undoNode().performClick()
+        composeRule.waitForIdle()
+    }
+
+    // Z1
+    @Test
+    fun `deleting an open and a done task removes it and offers undo`() {
+        add("Aufgabe offen")
+        addDone("Aufgabe erledigt")
+        launch()
+        waitForItems(2)
+
+        for (title in listOf("Aufgabe offen", "Aufgabe erledigt")) {
+            deleteViaForm(title)
+            waitForSnackbar()
+            composeRule.waitUntil(10_000) { visibleTitles().none { it == title } }
+            composeRule.onNodeWithText(deletedText(title)).assertIsDisplayed()
+            undoNode().assertIsDisplayed()
+            assertFalse(stored().any { it.content.title == title })
+            tapUndo()
+            waitForTitleInStore(title, present = true)
+            composeRule.waitUntil(10_000) { visibleTitles().contains(title) }
+        }
+    }
+
+    // Z2
+    @Test
+    fun `undo brings the task back unchanged at its old place`() {
+        add("Aufgabe 1")
+        val middle = add("Aufgabe 2", "Notiz zwei")
+        add("Aufgabe 3")
+        runBlocking { application.taskRepository.setStatus(middle.id, TaskStatus.DONE) }
+        launch()
+        waitForItems(3)
+        val before = stored()
+        val titles = visibleTitles()
+
+        deleteViaForm("Aufgabe 2")
+        waitForSnackbar()
+        tapUndo()
+
+        waitForTitles(titles)
+        assertEquals(before, stored())
+        assertEquals(1, stored().count { it.id == middle.id })
+    }
+
+    // Z3
+    @Test
+    fun `a task whose notice was swiped away stays deleted after a restart`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        deleteViaForm("Aufgabe 2")
+        waitForSnackbar()
+        composeRule.onNodeWithTag(TaskListTags.STATUS_SNACKBAR).performTouchInput { swipeLeft() }
+        composeRule.waitUntil(10_000) { count(TaskListTags.STATUS_SNACKBAR) == 0 }
+
+        scenario!!.close()
+        launch()
+        waitForItems(1)
+
+        assertEquals(listOf("Aufgabe 1"), visibleTitles())
+        assertEquals(listOf("Aufgabe 1"), stored().map { it.content.title })
+    }
+
+    // Z22
+    @Test
+    fun `ending the app while undo is possible keeps the task deleted`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        deleteViaForm("Aufgabe 2")
+        waitForSnackbar()
+
+        scenario!!.close()
+        launch()
+        waitForItems(1)
+
+        assertEquals(listOf("Aufgabe 1"), visibleTitles())
+        assertEquals(0, count(TaskListTags.STATUS_SNACKBAR))
+    }
+
+    // Z8
+    @Test
+    fun `the saved state of the activity holds no copy of the deleted task`() {
+        val marker = "MARKER-Zq7k-Löschtest"
+        add(marker, "MARKER-Zq7k-Notiz")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        deleteViaForm(marker)
+        waitForSnackbar()
+
+        val bundle = android.os.Bundle()
+        scenario!!.onActivity {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().callActivityOnSaveInstanceState(it, bundle)
+        }
+        val parcel = android.os.Parcel.obtain()
+        val bytes = try {
+            parcel.writeBundle(bundle)
+            parcel.marshall()
+        } finally {
+            parcel.recycle()
+        }
+
+        for (needle in listOf("MARKER-Zq7k", "Löschtest")) {
+            for (charset in listOf(Charsets.UTF_8, Charsets.UTF_16LE, Charsets.UTF_16BE)) {
+                assertFalse("$needle in $charset", indexOf(bytes, needle.toByteArray(charset)) >= 0)
+            }
+        }
+    }
+
+    private fun indexOf(haystack: ByteArray, needle: ByteArray): Int {
+        outer@ for (i in 0..haystack.size - needle.size) {
+            for (j in needle.indices) if (haystack[i + j] != needle[j]) continue@outer
+            return i
+        }
+        return -1
+    }
+
+    // Z18
+    @Test
+    fun `an open task deleted while done tasks are hidden comes back with undo`() {
+        add("Offen 1")
+        add("Offen 2")
+        addDone("Fertig 1")
+        hideDoneBeforeStart()
+        launch()
+        waitForItems(2)
+        val hiddenCount = application.getString(R.string.task_list_done_hidden_count, 1)
+        composeRule.onNodeWithText(hiddenCount).assertIsDisplayed()
+
+        deleteViaForm("Offen 2")
+        waitForSnackbar()
+        waitForTitles(listOf("Offen 1"))
+        tapUndo()
+
+        waitForTitles(listOf("Offen 2", "Offen 1"))
+        composeRule.onNodeWithText(hiddenCount).assertIsDisplayed()
+    }
+
+    // Z20
+    @Test
+    fun `deleting the last task shows the empty state and undo brings the task back`() {
+        add("Aufgabe 1")
+        launch()
+        waitForItems(1)
+
+        deleteViaForm("Aufgabe 1")
+
+        composeRule.waitUntil(10_000) { count(TaskListTags.EMPTY) == 1 }
+        waitForSnackbar()
+        tapUndo()
+        waitForTitles(listOf("Aufgabe 1"))
+        assertEquals(0, count(TaskListTags.EMPTY))
+    }
+
+    // Z23
+    @Test
+    fun `turning the screen while undo is possible keeps one offer and restores exactly once`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        launch()
+        waitForItems(2)
+        deleteViaForm("Aufgabe 2")
+        waitForSnackbar()
+
+        scenario!!.recreate()
+        waitForSnackbar()
+        undoNode().assertIsDisplayed()
+        tapUndo()
+
+        waitForTitles(listOf("Aufgabe 2", "Aufgabe 1"))
+        assertEquals(1, stored().count { it.content.title == "Aufgabe 2" })
+    }
+
+    private fun listViewModel(): TaskListViewModel {
+        lateinit var viewModel: TaskListViewModel
+        scenario!!.onActivity { viewModel = androidx.lifecycle.ViewModelProvider(it)[TaskListViewModel::class.java] }
+        return viewModel
+    }
+
+    // Z35
+    @Test
+    fun `after undo the restored task is announced and focused`() {
+        add("Aufgabe 1")
+        add("Aufgabe 2")
+        add("Aufgabe 3")
+        launch()
+        waitForItems(3)
+
+        deleteViaForm("Aufgabe 2")
+        waitForSnackbar()
+        tapUndo()
+        waitForTitles(listOf("Aufgabe 3", "Aufgabe 2", "Aufgabe 1"))
+
+        val announcement = { composeRule.onNodeWithTag(TaskListTags.STATUS_ANNOUNCEMENT, useUnmergedTree = true) }
+        composeRule.waitUntil(10_000) {
+            announcement().fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription) ==
+                listOf(application.getString(R.string.task_restored_announce, "Aufgabe 2"))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Aufgabe 2").assertIsFocused()
+    }
+
+    // Z36
+    @Test
+    fun `a task above the visible part that is deleted and restored does not move the list`() {
+        for (n in 1..30) add("Aufgabe $n")
+        launch()
+        waitForItems(1)
+        composeRule.onNodeWithTag(TaskListTags.LIST).performScrollToIndex(12)
+        composeRule.waitForIdle()
+        val top = firstVisibleTitle()
+        val above = stored().single { it.content.title == "Aufgabe ${top.removePrefix("Aufgabe ").toInt() + 3}" }
+        val viewModel = listViewModel()
+
+        runBlocking { application.taskRepository.delete(above.id) }
+        scenario!!.onActivity { viewModel.onTaskDeleted(above) }
+        waitForTitleInStore(above.content.title, present = false)
+        composeRule.waitForIdle()
+        assertEquals(top, firstVisibleTitle())
+
+        scenario!!.onActivity { viewModel.onUndo(viewModel.notice.value!!) }
+        waitForTitleInStore(above.content.title, present = true)
+        composeRule.waitForIdle()
+
+        assertEquals(top, firstVisibleTitle())
     }
 }

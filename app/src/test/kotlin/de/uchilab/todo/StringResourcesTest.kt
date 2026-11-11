@@ -132,4 +132,18 @@ class StringResourcesTest {
             assertTrue(dir, strings(dir).getValue("task_done_hidden").contains("%1\$s"))
         }
     }
+
+    // Z40
+    @Test
+    fun `the delete texts exist in both languages and take the title by placeholder`() {
+        for (dir in listOf("values", "values-de")) {
+            val texts = strings(dir)
+            for (key in listOf("task_deleted", "task_not_restored", "task_restored_announce")) {
+                assertTrue("$dir $key", texts.getValue(key).contains("%1\$s"))
+            }
+            for (key in listOf("task_undo_action", "task_restore_retry_action", "task_delete_description", "task_delete_failed_title", "task_delete_failed_body")) {
+                assertTrue("$dir $key", texts.getValue(key).isNotBlank())
+            }
+        }
+    }
 }

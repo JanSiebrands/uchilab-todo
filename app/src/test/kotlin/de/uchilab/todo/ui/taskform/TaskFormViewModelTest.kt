@@ -13,7 +13,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import de.uchilab.todo.domain.TaskReadException
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -39,7 +40,14 @@ class TaskFormViewModelTest {
         /** When set, [add] suspends until it completes. */
         var gate: CompletableDeferred<Unit>? = null
 
-        override fun observeTasks(): Flow<List<Task>> = emptyFlow()
+        /** What the store holds; the form reads the copy for "undo" from here. */
+        var stored: List<Task> = emptyList()
+        var readFailure = false
+
+        override fun observeTasks(): Flow<List<Task>> = flow {
+            if (readFailure) throw TaskReadException()
+            emit(stored)
+        }
 
         override suspend fun add(content: TaskContent): WriteResult<Task> {
             added += content
@@ -57,10 +65,21 @@ class TaskFormViewModelTest {
         }
 
         override suspend fun setStatus(id: TaskId, status: TaskStatus) = error("not used")
-        override suspend fun delete(id: TaskId) = error("not used")
+
+        val deletedIds = mutableListOf<TaskId>()
+        var deleteResult: WriteResult<Unit> = WriteResult.Success(Unit)
+
+        override suspend fun delete(id: TaskId): WriteResult<Unit> {
+            deletedIds += id
+            gate?.await()
+            return deleteResult
+        }
+
+        override suspend fun restore(task: Task): WriteResult<Unit> = error("not used")
     }
 
     private val repository = FakeRepository()
+    private val deleted = mutableListOf<Task>()
     private val handle = SavedStateHandle()
     private lateinit var viewModel: TaskFormViewModel
     private val family = "👨‍👩‍👧‍👦"
@@ -68,7 +87,7 @@ class TaskFormViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = TaskFormViewModel(repository, handle)
+        viewModel = TaskFormViewModel(repository, handle) { deleted += it }
     }
 
     @After
@@ -178,7 +197,7 @@ class TaskFormViewModelTest {
     @Test
     fun `a missing title is not saved, shows the hint and moves the focus to the title`() {
         for (empty in listOf("", "   ")) {
-            val vm = TaskFormViewModel(repository, SavedStateHandle()).also { it.open() }
+            val vm = TaskFormViewModel(repository, SavedStateHandle()) {}.also { it.open() }
             vm.onFocusChange(TaskFormField.NOTE)
             vm.onTitleChange(empty)
             vm.onSave()
@@ -392,7 +411,7 @@ class TaskFormViewModelTest {
         viewModel.onNoteChange("Notiz 1\nZeile 2")
         viewModel.onFocusChange(TaskFormField.NOTE)
         viewModel.onCloseRequest()
-        val restored = TaskFormViewModel(repository, handle).state
+        val restored = TaskFormViewModel(repository, handle) {}.state
         assertTrue(restored.open)
         assertEquals("Aufgabe 1", restored.title)
         assertEquals("Notiz 1\nZeile 2", restored.note)
@@ -403,11 +422,11 @@ class TaskFormViewModelTest {
     @Test
     fun `hints survive a restore`() {
         opened().onSave()
-        assertTrue(TaskFormViewModel(repository, handle).state.titleMissingShown)
+        assertTrue(TaskFormViewModel(repository, handle) {}.state.titleMissingShown)
         repository.result = { WriteResult.Failure(WriteError.STORAGE_FAILURE) }
         viewModel.onTitleChange("Aufgabe 1")
         viewModel.onSave()
-        assertTrue(TaskFormViewModel(repository, handle).state.saveFailed)
+        assertTrue(TaskFormViewModel(repository, handle) {}.state.saveFailed)
     }
 
     @Test
@@ -417,7 +436,7 @@ class TaskFormViewModelTest {
         viewModel.onCloseRequest()
         viewModel.onDiscardConfirm()
         assertTrue(handle.keys().isEmpty())
-        assertFalse(TaskFormViewModel(repository, handle).state.open)
+        assertFalse(TaskFormViewModel(repository, handle) {}.state.open)
     }
 
     // --- no content in text forms ---
@@ -597,7 +616,7 @@ class TaskFormViewModelTest {
         opened(task(title = "Aufgabe 1", note = "Notiz 1"))
         viewModel.onTitleChange("Aufgabe 2")
         viewModel.onCloseRequest()
-        val restored = TaskFormViewModel(repository, handle)
+        val restored = TaskFormViewModel(repository, handle) {}
         assertEquals(TaskId(7), restored.state.editing)
         assertEquals("Aufgabe 1", restored.state.original?.title)
         assertEquals("Notiz 1", restored.state.original?.note)
@@ -679,7 +698,7 @@ class TaskFormViewModelTest {
         opened(task())
         viewModel.onTitleChange("Aufgabe 2")
         viewModel.onSave()
-        assertFalse(TaskFormViewModel(repository, handle).state.saving)
+        assertFalse(TaskFormViewModel(repository, handle) {}.state.saving)
     }
 
     @Test
@@ -687,5 +706,156 @@ class TaskFormViewModelTest {
         opened(task(title = "MARKER-Titel-92", note = "MARKER-Notiz-92"))
         assertFalse(viewModel.state.toString().contains("MARKER"))
         assertFalse(viewModel.state.original.toString().contains("MARKER"))
+    }
+
+    // --- deleting (S8) ---
+
+    private fun deletable(title: String = "Aufgabe 1", note: String? = "Notiz 1"): Task =
+        task(title = title, note = note).also { repository.stored = listOf(it) }
+
+    // Z27
+    @Test
+    fun `a failed delete keeps the form open with the input and reports the failure`() {
+        val stored = deletable()
+        repository.deleteResult = WriteResult.Failure(WriteError.STORAGE_FAILURE)
+        opened(stored)
+        viewModel.onTitleChange("Aufgabe 2")
+
+        viewModel.onDelete()
+
+        assertTrue(viewModel.state.open)
+        assertEquals("Aufgabe 2", viewModel.state.title)
+        assertEquals("Notiz 1", viewModel.state.note)
+        assertTrue(viewModel.state.deleteFailed)
+        assertFalse(viewModel.state.saving)
+        assertTrue(deleted.isEmpty())
+    }
+
+    @Test
+    fun `a missing or unreadable stored task is reported as a failed delete without deleting`() {
+        val stored = deletable()
+        opened(stored)
+        repository.stored = emptyList()
+        viewModel.onDelete()
+        assertTrue(viewModel.state.deleteFailed)
+
+        repository.stored = listOf(stored)
+        repository.readFailure = true
+        viewModel.onDelete()
+        assertTrue(viewModel.state.deleteFailed)
+        assertTrue(repository.deletedIds.isEmpty())
+        assertTrue(deleted.isEmpty())
+    }
+
+    @Test
+    fun `a successful delete hands the stored task over and closes the form`() {
+        val stored = deletable()
+        opened(stored)
+
+        viewModel.onDelete()
+
+        assertEquals(listOf(stored), deleted)
+        assertEquals(listOf(stored.id), repository.deletedIds)
+        assertFalse(viewModel.state.open)
+        assertFalse(viewModel.state.deleteFailed)
+    }
+
+    // Z29
+    @Test
+    fun `the next attempt clears the other failure hint`() {
+        val stored = deletable()
+        repository.updateResult = { _, _ -> WriteResult.Failure(WriteError.STORAGE_FAILURE) }
+        repository.deleteResult = WriteResult.Failure(WriteError.STORAGE_FAILURE)
+        opened(stored)
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertTrue(viewModel.state.saveFailed)
+
+        viewModel.onDelete()
+        assertFalse(viewModel.state.saveFailed)
+        assertTrue(viewModel.state.deleteFailed)
+
+        viewModel.onSave()
+        assertFalse(viewModel.state.deleteFailed)
+        assertTrue(viewModel.state.saveFailed)
+    }
+
+    @Test
+    fun `the delete failure survives the end of the process as a flag only`() {
+        val stored = deletable()
+        repository.deleteResult = WriteResult.Failure(WriteError.STORAGE_FAILURE)
+        opened(stored)
+        viewModel.onDelete()
+        assertTrue(TaskFormViewModel(repository, handle) {}.state.deleteFailed)
+    }
+
+    // Z32
+    @Test
+    fun `deleting with unsaved changes hands over the stored version and saves nothing`() {
+        val stored = deletable(title = "Gespeicherter Titel", note = "Gespeicherte Notiz")
+        opened(stored)
+        viewModel.onTitleChange("Anderer Titel")
+        viewModel.onNoteChange("Andere Notiz")
+
+        viewModel.onDelete()
+
+        assertEquals(listOf(stored), deleted)
+        assertTrue(repository.updated.isEmpty())
+        assertFalse(viewModel.state.discardDialog)
+        assertFalse(viewModel.state.open)
+    }
+
+    // Z33
+    @Test
+    fun `while saving a delete does nothing`() {
+        val stored = deletable()
+        repository.gate = CompletableDeferred()
+        opened(stored)
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onSave()
+        assertTrue(viewModel.state.saving)
+
+        viewModel.onDelete()
+
+        assertTrue(repository.deletedIds.isEmpty())
+        repository.gate!!.complete(Unit)
+    }
+
+    // Z33
+    @Test
+    fun `while deleting save, close and input do nothing`() {
+        val stored = deletable()
+        repository.gate = CompletableDeferred()
+        opened(stored)
+        viewModel.onTitleChange("Aufgabe 2")
+        viewModel.onDelete()
+        assertTrue(viewModel.state.saving)
+
+        viewModel.onSave()
+        viewModel.onCloseRequest()
+        viewModel.onDiscardConfirm()
+        viewModel.onTitleChange("x")
+        viewModel.onNoteChange("y")
+        viewModel.onDelete()
+
+        assertTrue(repository.updated.isEmpty())
+        assertEquals(listOf(stored.id), repository.deletedIds)
+        assertTrue(viewModel.state.open)
+        assertFalse(viewModel.state.discardDialog)
+        assertEquals("Aufgabe 2", viewModel.state.title)
+        assertEquals("Notiz 1", viewModel.state.note)
+        repository.gate!!.complete(Unit)
+        assertFalse(viewModel.state.open)
+        assertEquals(listOf(stored), deleted)
+    }
+
+    @Test
+    fun `delete does nothing for a new task or a closed form`() {
+        deletable()
+        viewModel.onDelete()
+        opened()
+        viewModel.onDelete()
+        assertTrue(repository.deletedIds.isEmpty())
+        assertTrue(viewModel.state.open)
     }
 }

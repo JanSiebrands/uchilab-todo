@@ -417,6 +417,42 @@ class TaskRepositoryTest {
         assertEquals(1, rowCount(path))
     }
 
+    // Z26
+    @Test
+    fun `restore puts a deleted task back with id, title, note, status and creation time`() {
+        add("Aufgabe 1")
+        val kept = add("MARKER-c41e-Zwei", "Notiz zwei")
+        add("Aufgabe 3")
+        runBlocking { repository.setStatus(kept.id, TaskStatus.DONE) }
+        val before = load().single { it.id == kept.id }
+        assertTrue(runBlocking { repository.delete(kept.id) } is WriteResult.Success)
+
+        assertTrue(runBlocking { repository.restore(before) } is WriteResult.Success)
+
+        assertEquals(before, load().single { it.id == before.id })
+        assertEquals(listOf("Aufgabe 3", "MARKER-c41e-Zwei", "Aufgabe 1"), titles())
+    }
+
+    // Z26
+    @Test
+    fun `restore on a closed database is a storage failure`() {
+        val task = add("Aufgabe 1")
+        runBlocking { repository.delete(task.id) }
+        db.close()
+        assertEquals(WriteError.STORAGE_FAILURE, failure(runBlocking { repository.restore(task) }))
+    }
+
+    // Z25
+    @Test
+    fun `restore of a task that still exists fails and adds no row`() {
+        val task = add("Aufgabe 1")
+        add("Aufgabe 2")
+
+        assertEquals(WriteError.STORAGE_FAILURE, failure(runBlocking { repository.restore(task) }))
+
+        assertEquals(2, load().size)
+    }
+
     private fun setUserVersion(path: String, version: Int) {
         val raw = android.database.sqlite.SQLiteDatabase.openDatabase(path, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE)
         try {
