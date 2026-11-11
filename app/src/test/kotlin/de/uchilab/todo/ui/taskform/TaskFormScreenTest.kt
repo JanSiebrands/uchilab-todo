@@ -21,6 +21,10 @@ import androidx.compose.ui.semantics.SemanticsProperties.Heading
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Density
 import de.uchilab.todo.domain.TaskContent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -57,6 +61,7 @@ class TaskFormScreenTest {
         override fun onNoteChange(raw: String) { calls += "note" }
         override fun onFocusChange(field: TaskFormField) { calls += "focus-$field" }
         override fun onSave() { calls += "save" }
+        override fun onDelete() { calls += "delete" }
         override fun onCloseRequest() { calls += "close" }
         override fun onDiscardDismiss() { calls += "dismiss" }
         override fun onDiscardConfirm() { calls += "confirm" }
@@ -437,5 +442,54 @@ class TaskFormScreenTest {
         show(TaskFormUiState(open = true))
         val margin = with(composeRule.density) { 8.dp.toPx() }
         assertTrue(titleTop() >= barBottom() + margin - 1f)
+    }
+
+    // --- delete (S8) ---
+
+    // Z11
+    @Test
+    fun `an edit form has a delete sign left of save, described, a button, at least 48 dp, also at 200 percent`() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                AppTheme { TaskFormScreen(editing(), recorder) }
+            }
+        }
+        val delete = composeRule.onNodeWithTag(TaskFormTags.DELETE)
+        delete.assertIsDisplayed()
+        val config = delete.fetchSemanticsNode().config
+        assertEquals(listOf(context.getString(R.string.task_delete_description)), config[SemanticsProperties.ContentDescription])
+        assertEquals(Role.Button, config[SemanticsProperties.Role])
+        val bounds = delete.fetchSemanticsNode().touchBoundsInRoot
+        val density = composeRule.density.density
+        assertTrue(bounds.width / density >= 48f && bounds.height / density >= 48f)
+        assertTrue(bounds.right <= node(TaskFormTags.SAVE).fetchSemanticsNode().boundsInRoot.left)
+        delete.performClick()
+        assertEquals(listOf("delete"), recorder.calls.filterNot { it.startsWith("focus") })
+    }
+
+    // Z11
+    @Test
+    fun `a new task form has no delete sign`() {
+        show(open())
+        tagged(TaskFormTags.DELETE, unmerged = true).assertCountEquals(0)
+    }
+
+    // Z28
+    @Test
+    fun `the delete failed hint is an urgent live region at the top with its own title`() {
+        composeRule.setContent { AppTheme { TaskFormScreen(TaskFormUiState(open = true, editing = TaskId(7), original = sampleContent, title = "Aufgabe 1", note = "Notiz 1", deleteFailed = true), recorder) } }
+        node(TaskFormTags.DELETE_FAILED).assertIsDisplayed()
+        assertEquals(LiveRegionMode.Assertive, node(TaskFormTags.DELETE_FAILED).fetchSemanticsNode().config[SemanticsProperties.LiveRegion])
+        val top = node(TaskFormTags.DELETE_FAILED).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(top <= node(TaskFormTags.TITLE_FIELD).fetchSemanticsNode().boundsInRoot.top)
+        composeRule.onNodeWithText(context.getString(R.string.task_delete_failed_title), substring = true).assertIsDisplayed()
+        tagged(TaskFormTags.SAVE_FAILED).assertCountEquals(0)
+    }
+
+    @Test
+    fun `without a failure there is no delete failed hint`() {
+        show(editing())
+        tagged(TaskFormTags.DELETE_FAILED).assertCountEquals(0)
     }
 }

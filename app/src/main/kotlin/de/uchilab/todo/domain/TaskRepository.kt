@@ -32,4 +32,10 @@ interface TaskRepository {
 
     /** Removes the row physically (privacy V4). */
     suspend fun delete(id: TaskId): WriteResult<Unit>
+
+    /**
+     * Inserts [task] again with its old id, status and creation time (undo after [delete]). If the id exists
+     * already, nothing is written and the result is a storage failure, so there is never a duplicate.
+     */
+    suspend fun restore(task: Task): WriteResult<Unit>
 }

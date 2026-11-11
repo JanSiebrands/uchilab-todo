@@ -46,6 +46,11 @@ class RoomTaskRepository(
 
     override suspend fun delete(id: TaskId): WriteResult<Unit> = write { affected(dao.delete(id.value)) }
 
+    override suspend fun restore(task: Task): WriteResult<Unit> = write {
+        dao.insert(TaskEntity(task.id.value, task.content.title, task.content.note, task.createdAt.toEpochMilli(), task.status.toStored()))
+        WriteResult.Success(Unit)
+    }
+
     private fun affected(rows: Int): WriteResult<Unit> =
         if (rows > 0) WriteResult.Success(Unit) else WriteResult.Failure(WriteError.NOT_FOUND)
 

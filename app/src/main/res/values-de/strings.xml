@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">uchilab-todo</string>
 
     <string name="task_list_empty_title">Noch keine Aufgaben</string>
@@ -41,4 +41,25 @@
     <string name="task_status_announce_done">„%1$s“ erledigt</string>
     <string name="task_status_announce_open">„%1$s“ wieder offen</string>
     <string name="task_status_save_failed">Status nicht gespeichert. Die Aufgabe ist unverändert, versuche es noch einmal.</string>
+    <string name="task_list_hide_done">Ausblenden</string>
+    <string name="task_list_show_done">Einblenden</string>
+    <string name="task_list_hide_done_description">Erledigte ausblenden</string>
+    <string name="task_list_show_done_description">Erledigte einblenden</string>
+    <string name="task_list_done_hidden_count" tools:ignore="PluralsCandidate">%1$d ausgeblendet</string>
+    <string name="task_list_all_hidden_title">Alles erledigt</string>
+    <plurals name="task_list_all_hidden_body">
+        <item quantity="one">%1$d erledigte Aufgabe ist ausgeblendet.</item>
+        <item quantity="other">%1$d erledigte Aufgaben sind ausgeblendet.</item>
+    </plurals>
+    <string name="task_list_all_hidden_show">Erledigte einblenden</string>
+    <string name="task_done_hidden">„%1$s“ erledigt und ausgeblendet</string>
+    <string name="task_list_setting_save_failed">Einstellung nicht gespeichert. Die Liste ist unverändert, versuche es noch einmal.</string>
+    <string name="task_delete_description">Löschen</string>
+    <string name="task_delete_failed_title">Nicht gelöscht</string>
+    <string name="task_delete_failed_body">Die Aufgabe ist unverändert. Versuche es noch einmal.</string>
+    <string name="task_deleted">„%1$s“ gelöscht</string>
+    <string name="task_undo_action">Rückgängig</string>
+    <string name="task_restored_announce">„%1$s“ wiederhergestellt</string>
+    <string name="task_not_restored">„%1$s“ nicht wiederhergestellt</string>
+    <string name="task_restore_retry_action">Noch einmal</string>
 </resources>

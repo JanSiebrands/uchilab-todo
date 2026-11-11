@@ -5,7 +5,9 @@
 #   every combination: empty (fresh install), list (readable seed of ShowcaseSeedTest for the language);
 #   light-en and dark-de: input-empty, input-title-missing, input-title-too-long, input-discard-dialog;
 #   light-de: input-font200 (font scale 2.0); dark-de: input-landscape (user rotation 1);
-#   every combination: edit; light-de and dark-en: edit-discard-dialog; light-en: edit-landscape (UCH-137).
+#   every combination: edit; light-de and dark-en: edit-discard-dialog; light-en: edit-landscape (UCH-137);
+#   every combination: list-done, list-hidden; dark-de: list-hidden-checked; dark-en: list-all-done;
+#   light-de and dark-en: list-all-hidden (UCH-168); light-de and dark-en: list-deleted (UCH-170).
 # Before each picture the script waits for the state's test tag (operation). The pictures are evidence, not a
 # check (UCH-116 R2): whether they show the right state, language and theme, the designer and the PO judge by
 # looking at them. The discard dialogs are opened by tapping close, as with a finger (UCH-99). Every setting is
@@ -31,6 +33,11 @@ list_tag="task_list"
 item_tag="task_item"
 empty_tag="task_list_empty"
 done_heading_tag="task_list_done_heading"
+done_toggle_tag="task_list_done_toggle"
+all_hidden_tag="task_list_all_hidden"
+all_hidden_show_tag="task_list_all_hidden_show"
+checkbox_tag="task_item_checkbox"
+snackbar_tag="task_status_snackbar"
 action_tag="new_task_action"
 form_tag="new_task_form"
 title_tag="new_task_title"
@@ -42,6 +49,7 @@ discard_confirm_tag="new_task_discard_confirm"
 discard_keep_tag="new_task_discard_keep"
 close_tag="new_task_close"
 item_note_tag="task_item_note"
+delete_tag="task_form_delete"
 
 reset_display() {
   timeout 10 adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
@@ -146,6 +154,21 @@ else
 fi
 wait_until 30 "edit: form still open after closing" gone "$form_tag"
 
+# Delete with undo (UCH-170, plan UCH-166 section 8, Z46/Z47): open an entry of the list seed, tap delete as with a
+# finger and take the list with the undo hint within its 10 s. Then the list seed again, so later steps keep it.
+if [ "$mode-$lang" = light-de ] || [ "$mode-$lang" = dark-en ]; then
+  open_edit "list-deleted"
+  tap "list-deleted" "$delete_tag"
+  wait_until 30 "list-deleted: form still open after deleting" gone "$form_tag"
+  wait_until 8 "list-deleted: no undo hint after deleting" shown "$snackbar_tag"
+  shot list-deleted "$snackbar_tag"
+  timeout 30 adb shell am force-stop "$package"
+  wait_process_gone
+  install_db "$seed/tasks.db"
+  start_app "list-deleted reset"
+  wait_until 90 "list-deleted reset: list not shown" shown "$list_tag"
+fi
+
 if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   open_new_task "input"
   shot input-empty "$form_tag"
@@ -215,19 +238,44 @@ if [ "$mode-$lang" = light-en ]; then
   restart "edit landscape reset"
 fi
 
-# Lists with done tasks (UCH-130, plan UCH-122 Z27/Z28): seeds done-<lang> and all-done-en of ShowcaseSeedTest.
-# Pictures only (evidence, UCH-116), waiting for the heading "Done" before each one; last, because the steps
-# above restart with the list seed.
-shot_done_seed() {
+# Lists with done tasks (UCH-130, plan UCH-122 Z27/Z28): seeds done-<lang>, all-done-en and all-done-de of
+# ShowcaseSeedTest. Pictures only (evidence, UCH-116), waiting for the heading "Done" before each one; last,
+# because the steps above restart with the list seed.
+load_done_seed() {
   [ -s "$seed_root/$2/tasks.db" ] || fail "seed $seed_root/$2/tasks.db missing"
   timeout 30 adb shell am force-stop "$package"
   wait_process_gone
   install_db "$seed_root/$2/tasks.db"
   start_app "$1"
   wait_until 90 "$1: heading of the done tasks not shown" shown "$done_heading_tag"
-  shot "$1" "$done_heading_tag"
 }
-shot_done_seed list-done "done-$lang"
-if [ "$mode-$lang" = dark-en ]; then shot_done_seed list-all-done all-done-en; fi
+# Hiding the done tasks (UCH-168, plan UCH-165 section 8, Z38-Z41): tapped as with a finger. The app stores the
+# setting, so every step switches it back before the next one; a fresh install per combination drops it anyway.
+hide_all_done() {
+  tap "$1" "$done_toggle_tag"
+  wait_until 30 "$1: all-hidden state not shown after hiding" shown "$all_hidden_tag"
+  shot list-all-hidden "$all_hidden_tag"
+  tap "$1 reset" "$all_hidden_show_tag"
+  wait_until 30 "$1 reset: heading of the done tasks not shown after showing them" shown "$done_heading_tag"
+}
+load_done_seed list-done "done-$lang"
+shot list-done "$done_heading_tag"
+tap "list-hidden" "$done_toggle_tag"
+shot list-hidden "$done_heading_tag"
+if [ "$mode-$lang" = dark-de ]; then
+  # The first check box is an open task, the done ones are hidden. The hint is short (4 s): no extra wait.
+  tap "list-hidden-checked" "$checkbox_tag"
+  shot list-hidden-checked "$snackbar_tag"
+fi
+tap "list-hidden reset" "$done_toggle_tag"
+if [ "$mode-$lang" = dark-en ]; then
+  load_done_seed list-all-done all-done-en
+  shot list-all-done "$done_heading_tag"
+  hide_all_done list-all-hidden
+fi
+if [ "$mode-$lang" = light-de ]; then
+  load_done_seed list-all-hidden all-done-de
+  hide_all_done list-all-hidden
+fi
 
 log "OK: screenshots for $mode-$lang written to $SCREENSHOTS"

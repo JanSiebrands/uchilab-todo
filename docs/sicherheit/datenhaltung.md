@@ -14,6 +14,9 @@ Jede Vorgabe hat eine Kennung, eine Begründung und sagt, wer sie prüft: **Pipe
 **D1 Nur im app-privaten internen Speicher.** Aufgaben liegen ausschließlich in der Datenbank der App unter `Context.getDatabasePath(...)` (Room/SQLite, Ordner `databases/`). Keine Kopie in `filesDir`, `cacheDir`, SharedPreferences oder DataStore.
 *Warum:* Den Ordner kann auf einem nicht gerooteten Gerät nur die App selbst lesen. Eine einzige Ablage hält Backup-Ausschluss und spätere Löschung überschaubar. Prüft: Review, ergänzend Pipeline P6.
 
+**D1a Ausnahme für die Einstellung „Erledigte ausblenden“ (S7, UCH-161).** Die Einstellung ist ein einzelner `Boolean` und liegt in genau einer SharedPreferences-Datei der Plattform mit festem Namen, `MODE_PRIVATE`, über `applicationContext` (Ordner `shared_prefs/`, Backup-Domain `sharedpref`, ausgeschlossen nach B1). Sie enthält keinen Inhalt und keine ID einer Aufgabe. Aufgaben selbst liegen weiter nur in der Datenbank nach D1. DataStore und `androidx.preference` sind nicht zugelassen. Jeder weitere Schlüssel, jeder andere Werttyp und jede weitere Datei sind ein Anlass für Security und DSGVO.
+*Warum:* Keine neue Abhängigkeit und keine Migration der Datenbank für einen Wahrheitswert. Prüft: Test (Ablageort) und Review.
+
 **D2 Kein externer oder geteilter Speicher.** Verboten in `app/src/main`: `getExternalFilesDir`, `getExternalCacheDir`, `getExternalMediaDirs`, `Environment.getExternalStorage*`, `MediaStore`, `MODE_WORLD_READABLE`, `MODE_WORLD_WRITEABLE`.
 *Warum:* Externer Speicher ist für andere Apps, per USB und teils für Backups erreichbar. Prüft: Pipeline P6. Berechtigungen für Speicher verhindert bereits die vorhandene Allowlist der Berechtigungen.
 
@@ -120,6 +123,7 @@ Anlass für ein Security-Review ist jede der folgenden Änderungen. PO bzw. Arch
   *Warum:* Läuft beim Build mit vollem Zugriff auf Runner und Quelltext.
 - **A4** Eine Bibliothek mit nativem Code (`.so` in der APK).
 - **A5** Eine Bibliothek, die dem gemergten Manifest eine Komponente (`provider`, `service`, `receiver`), eine Berechtigung oder ein Backup-Attribut hinzufügt, auch nicht exportiert. Exportierte Komponenten und Berechtigungen fängt die Pipeline ab, nicht exportierte nicht.
+- **A6** Jede neue gespeicherte Einstellung, jeder neue Schlüssel in SharedPreferences und jede neue Datei im Datenverzeichnis der App.
 - **Kein Anlass:** Versions-Updates von Renovate für schon geprüfte Bibliotheken, solange die Pipeline grün ist (Berechtigungen, exportierte Komponenten, Schwachstellen-Scan und Prüfsummen greifen dort).
 
 **Für S2 heißt das:** Room (A1) und KSP (A3) sind ein Anlass. S2 braucht eine Review-Stufe Security nach dem Review des Architekten. Ich prüfe dort gegen diese Vorgaben und den Plan.

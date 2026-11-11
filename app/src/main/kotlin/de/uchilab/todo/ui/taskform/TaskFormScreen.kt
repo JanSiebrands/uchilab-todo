@@ -1,5 +1,6 @@
 package de.uchilab.todo.ui.taskform
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -19,7 +20,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -111,6 +114,16 @@ fun TaskFormScreen(state: TaskFormUiState, actions: TaskFormActions, modifier: M
                     )
                 },
                 actions = {
+                    if (state.editing != null) {
+                        IconButton(onClick = actions::onDelete, modifier = Modifier.testTag(TaskFormTags.DELETE)) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = stringResource(R.string.task_delete_description),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     TextButton(onClick = actions::onSave, modifier = Modifier.testTag(TaskFormTags.SAVE)) {
                         Text(stringResource(R.string.new_task_save))
                     }
@@ -150,7 +163,12 @@ private fun Form(
             .padding(FormPadding),
         verticalArrangement = Arrangement.spacedBy(FormPadding),
     ) {
-        if (state.saveFailed) SaveFailedNotice()
+        if (state.saveFailed) {
+            FailureNotice(TaskFormTags.SAVE_FAILED, R.string.new_task_save_failed_title, R.string.new_task_save_failed_body)
+        }
+        if (state.deleteFailed) {
+            FailureNotice(TaskFormTags.DELETE_FAILED, R.string.task_delete_failed_title, R.string.task_delete_failed_body)
+        }
 
         val titleHint = when {
             state.titleTooLong -> stringResource(R.string.new_task_title_too_long, numbers.format(TaskContent.MAX_TITLE_LENGTH))
@@ -314,14 +332,14 @@ private fun rememberLabelBringIntoView(viewportHeight: Int): LabelBringIntoView 
 
 /** Fixed text, never a technical message; urgent live region so TalkBack says it at once. */
 @Composable
-private fun SaveFailedNotice() {
+private fun FailureNotice(tag: String, @StringRes title: Int, @StringRes body: Int) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag(TaskFormTags.SAVE_FAILED)
+            .testTag(tag)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Assertive },
     ) {
         Row(Modifier.padding(FormPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -332,11 +350,11 @@ private fun SaveFailedNotice() {
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.new_task_save_failed_title),
+                    text = stringResource(title),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = stringResource(R.string.new_task_save_failed_body),
+                    text = stringResource(body),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

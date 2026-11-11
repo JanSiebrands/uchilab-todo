@@ -59,7 +59,7 @@ class CorruptDatabaseTest {
     }
 
     private fun state(repository: RoomTaskRepository): TaskListUiState =
-        runBlocking { withTimeout(10_000) { repository.observeTasks().toUiState().first() } }
+        runBlocking { withTimeout(10_000) { repository.observeTasks().toUiState(false).first() } }
 
     private fun content(title: String) = (TaskContent.of(title, null) as Validated.Valid).content
 

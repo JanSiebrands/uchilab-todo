@@ -7,6 +7,13 @@ release-list-done-dark-en.png
 release-list-done-light-de.png
 release-list-done-dark-de.png
 release-list-all-done-dark-en.png
+release-list-hidden-light-en.png
+release-list-hidden-dark-en.png
+release-list-hidden-light-de.png
+release-list-hidden-dark-de.png
+release-list-hidden-checked-dark-de.png
+release-list-all-hidden-light-de.png
+release-list-all-hidden-dark-en.png
 release-empty-light-en.png
 release-empty-dark-en.png
 release-empty-light-de.png
@@ -32,3 +39,5 @@ release-edit-dark-en.png
 release-edit-discard-dialog-light-de.png
 release-edit-discard-dialog-dark-en.png
 release-edit-landscape-light-en.png
+release-list-deleted-light-de.png
+release-list-deleted-dark-en.png

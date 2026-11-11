@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
@@ -32,6 +34,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.TextLayoutResult
@@ -74,14 +77,18 @@ class TaskListScreenTest {
     private fun task(id: Long, title: String, note: String? = null, status: TaskStatus = TaskStatus.OPEN): Task =
         Task(TaskId(id), (TaskContent.of(title, note) as Validated.Valid).content, Instant.EPOCH, status)
 
-    private fun loaded(tasks: List<Task>) = tasks.groupByStatus()
+    private fun loaded(tasks: List<Task>, hideDone: Boolean = false) = tasks.groupByStatus(hideDone)
 
     private var onStatusChange: (TaskId, TaskStatus) -> Unit = { _, _ -> }
     private var onOpenTask: (Task) -> Unit = {}
 
+    private var onHideDoneChange: (Boolean) -> Unit = {}
+
     private fun show(state: TaskListUiState) {
         composeRule.setContent {
-            AppTheme { TaskListScreen(state, rememberLazyListState(), onStatusChange, onOpenTask = onOpenTask) }
+            AppTheme {
+                TaskListScreen(state, rememberLazyListState(), onStatusChange, onOpenTask = onOpenTask, onHideDoneChange = onHideDoneChange)
+            }
         }
     }
 
@@ -599,5 +606,152 @@ class TaskListScreenTest {
         show(loaded(listOf(task(1, "Offen"))))
         checkboxes()[0].performClick()
         assertTrue(opened.isEmpty())
+    }
+
+    // --- hiding done tasks (S7) ---
+
+    private val mixed = listOf(task(3, "Offen", status = TaskStatus.OPEN), task(2, "Fertig zwei", status = TaskStatus.DONE), task(1, "Fertig eins", status = TaskStatus.DONE))
+
+    private fun toggle() = composeRule.onNodeWithTag(TaskListTags.DONE_TOGGLE)
+
+    // Z10
+    @Test
+    fun `all done and hidden shows its own state with the count, a polite live region and a button that shows them`() {
+        val calls = mutableListOf<Boolean>()
+        onHideDoneChange = { calls += it }
+        show(loaded(listOf(task(2, "Fertig zwei", status = TaskStatus.DONE), task(1, "Fertig eins", status = TaskStatus.DONE)), hideDone = true))
+
+        composeRule.onAllNodesWithTag(TaskListTags.EMPTY).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(TaskListTags.DONE_TOGGLE).assertCountEquals(0)
+        composeRule.onNodeWithTag(TaskListTags.ALL_HIDDEN).assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        composeRule.onNodeWithText(context.getString(R.string.task_list_all_hidden_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.resources.getQuantityString(R.plurals.task_list_all_hidden_body, 2, 2)).assertIsDisplayed()
+        composeRule.onNodeWithTag(TaskListTags.ALL_HIDDEN_SHOW).assertIsDisplayed().performClick()
+        assertEquals(listOf(false), calls)
+    }
+
+    @Test
+    fun `all done and hidden uses the singular text for one task and its sign is hidden from TalkBack`() {
+        show(loaded(listOf(task(1, "Fertig", status = TaskStatus.DONE)), hideDone = true))
+        composeRule.onNodeWithText(context.resources.getQuantityString(R.plurals.task_list_all_hidden_body, 1, 1)).assertIsDisplayed()
+        assertNoDescriptionInUnmergedTree()
+    }
+
+    @Test
+    fun `the all done state is scrollable`() {
+        show(loaded(listOf(task(1, "Fertig", status = TaskStatus.DONE)), hideDone = true))
+        composeRule.onNodeWithTag(TaskListTags.ALL_HIDDEN).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
+    }
+
+    // Z13
+    @Test
+    fun `the button says what it does, as a button, and is its own focus target`() {
+        show(loaded(mixed, hideDone = false))
+        toggle().assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(context.getString(R.string.task_list_hide_done_description))))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
+        composeRule.onNodeWithText(context.getString(R.string.task_list_hide_done)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `while hidden the button offers to show them`() {
+        show(loaded(mixed, hideDone = true))
+        toggle().assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(context.getString(R.string.task_list_show_done_description))))
+        composeRule.onNodeWithText(context.getString(R.string.task_list_show_done)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the button asks for the opposite of the shown value`() {
+        val calls = mutableListOf<Boolean>()
+        onHideDoneChange = { calls += it }
+        show(loaded(mixed, hideDone = false))
+        toggle().performClick()
+        assertEquals(listOf(true), calls)
+    }
+
+    @Test
+    fun `while hidden the button asks to show`() {
+        val calls = mutableListOf<Boolean>()
+        onHideDoneChange = { calls += it }
+        show(loaded(mixed, hideDone = true))
+        toggle().performClick()
+        assertEquals(listOf(false), calls)
+    }
+
+    // Z14
+    @Test
+    fun `the done row is a heading and names the number of hidden tasks only while hidden`() {
+        show(loaded(mixed, hideDone = true))
+        composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).assert(isHeading())
+        composeRule.onNodeWithText(context.getString(R.string.task_list_done_hidden_count, 2)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the count is not shown while the done tasks are shown`() {
+        show(loaded(mixed, hideDone = false))
+        composeRule.onAllNodesWithText(context.getString(R.string.task_list_done_hidden_count, 2)).assertCountEquals(0)
+        composeRule.onNodeWithTag(TaskListTags.DONE_HEADING).assert(isHeading())
+    }
+
+    @Test
+    fun `hidden done tasks are not in the list and open ones are`() {
+        show(loaded(mixed, hideDone = true))
+        composeRule.onAllNodesWithTag(TaskListTags.ITEM).assertCountEquals(1)
+        composeRule.onNodeWithText("Offen").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Fertig zwei").assertCountEquals(0)
+    }
+
+    // Z26
+    @Test
+    fun `while hidden no check box of a done task exists`() {
+        show(loaded(mixed, hideDone = true))
+        val states = composeRule.onAllNodesWithTag(TaskListTags.ITEM_CHECKBOX).fetchSemanticsNodes().map { it.config[SemanticsProperties.ToggleableState] }
+        assertEquals(listOf(ToggleableState.Off), states)
+    }
+
+    // Z17
+    /** The done row is as high as the gap between the last open and the first done entry. */
+    private fun doneRowHeight(): Float {
+        val entries = composeRule.onAllNodesWithTag(TaskListTags.ITEM).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
+        return entries[1].boundsInRoot.top - entries[0].boundsInRoot.bottom
+    }
+
+    @Test
+    fun `the done row is at least 56 dp high and the button at least 48 dp wide and high`() {
+        show(loaded(mixed.take(2), hideDone = false))
+        toggle().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val minimum = with(composeRule.density) { 56.dp.toPx() }
+        assertTrue("row ${doneRowHeight()} below $minimum", doneRowHeight() >= minimum)
+    }
+
+    @Test
+    fun `at 200 percent text the row keeps its size, the button stays reachable`() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.FontScale(2f)) {
+                AppTheme { TaskListScreen(loaded(mixed.take(2), hideDone = false), rememberLazyListState(), onStatusChange) }
+            }
+        }
+        toggle().assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val minimum = with(composeRule.density) { 56.dp.toPx() }
+        assertTrue("row ${doneRowHeight()} below $minimum", doneRowHeight() >= minimum)
+    }
+
+    // Z18
+    @Test
+    fun `without done tasks there is no button and the list is unchanged, whatever the setting says`() {
+        show(loaded(listOf(task(2, "Offen zwei"), task(1, "Offen eins")), hideDone = true))
+        composeRule.onAllNodesWithTag(TaskListTags.DONE_HEADING).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(TaskListTags.DONE_TOGGLE).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(TaskListTags.ALL_HIDDEN).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(TaskListTags.ITEM).assertCountEquals(2)
+    }
+
+    // Z19
+    @Test
+    fun `without any task the empty state shows, whatever the setting says`() {
+        show(loaded(emptyList(), hideDone = true))
+        composeRule.onNodeWithTag(TaskListTags.EMPTY).assertIsDisplayed()
+        composeRule.onAllNodesWithTag(TaskListTags.ALL_HIDDEN).assertCountEquals(0)
     }
 }
