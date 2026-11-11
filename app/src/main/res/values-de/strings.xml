@@ -54,4 +54,12 @@
     <string name="task_list_all_hidden_show">Erledigte einblenden</string>
     <string name="task_done_hidden">„%1$s“ erledigt und ausgeblendet</string>
     <string name="task_list_setting_save_failed">Einstellung nicht gespeichert. Die Liste ist unverändert, versuche es noch einmal.</string>
+    <string name="task_delete_description">Löschen</string>
+    <string name="task_delete_failed_title">Nicht gelöscht</string>
+    <string name="task_delete_failed_body">Die Aufgabe ist unverändert. Versuche es noch einmal.</string>
+    <string name="task_deleted">„%1$s“ gelöscht</string>
+    <string name="task_undo_action">Rückgängig</string>
+    <string name="task_restored_announce">„%1$s“ wiederhergestellt</string>
+    <string name="task_not_restored">„%1$s“ nicht wiederhergestellt</string>
+    <string name="task_restore_retry_action">Noch einmal</string>
 </resources>

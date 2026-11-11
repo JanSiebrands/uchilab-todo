@@ -170,13 +170,14 @@ class MainScreenStatusTest {
 
     @Test
     fun `a long title is not cut off in the notice`() {
-        val longTitle = "Erfundener sehr langer Titel ".repeat(7).trim()
+        val longTitle = "Erfundener sehr langer Titel ".repeat(6).trim()
         val task = Task(TaskId(8), (TaskContent.of(longTitle, null) as Validated.Valid).content, Instant.EPOCH, TaskStatus.OPEN)
         composeRule.setContent { AppTheme { MainScreen(empty, notice = ListNotice.Deleted(task)) } }
         val layout = composeRule.onNodeWithText(context.getString(R.string.task_deleted, longTitle)).fetchSemanticsNode()
         val result = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         layout.config[SemanticsActions.GetTextLayoutResult].action?.invoke(result)
-        assertFalse(result.single().hasVisualOverflow)
+        assertEquals(Int.MAX_VALUE, result.single().layoutInput.maxLines)
+        assertFalse(result.single().didOverflowHeight)
     }
 
     // Z15

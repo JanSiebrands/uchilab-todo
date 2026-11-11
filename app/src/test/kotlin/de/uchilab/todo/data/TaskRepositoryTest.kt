@@ -435,11 +435,16 @@ class TaskRepositoryTest {
 
     // Z26
     @Test
-    fun `restore on a closed database is a storage failure`() {
+    fun `a failing restore reports STORAGE_FAILURE and writes nothing`() {
         val task = add("Aufgabe 1")
-        runBlocking { repository.delete(task.id) }
-        db.close()
+        runBlocking {
+            repository.delete(task.id)
+            db.useWriterConnection {
+                it.usePrepared("CREATE TRIGGER fail_restore BEFORE INSERT ON task BEGIN SELECT RAISE(ABORT, 'test'); END") { st -> st.step() }
+            }
+        }
         assertEquals(WriteError.STORAGE_FAILURE, failure(runBlocking { repository.restore(task) }))
+        assertEquals(emptyList<Task>(), load())
     }
 
     // Z25

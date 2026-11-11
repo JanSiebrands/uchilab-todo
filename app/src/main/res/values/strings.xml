@@ -66,4 +66,15 @@
     <!-- Hint after checking off while done tasks are hidden, %1$s = title. -->
     <string name="task_done_hidden">“%1$s” done and hidden</string>
     <string name="task_list_setting_save_failed">Setting not saved. The list hasn’t changed, please try again.</string>
+    <!-- Spoken only: description of the delete sign in the edit form. -->
+    <string name="task_delete_description">Delete</string>
+    <string name="task_delete_failed_title">Not deleted</string>
+    <string name="task_delete_failed_body">The task hasn’t changed. Please try again.</string>
+    <!-- Hint after deleting, %1$s = title. -->
+    <string name="task_deleted">“%1$s” deleted</string>
+    <string name="task_undo_action">Undo</string>
+    <!-- Spoken after undo, %1$s = title. -->
+    <string name="task_restored_announce">“%1$s” restored</string>
+    <string name="task_not_restored">“%1$s” not restored</string>
+    <string name="task_restore_retry_action">Try again</string>
 </resources>

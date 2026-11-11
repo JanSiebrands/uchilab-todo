@@ -197,7 +197,7 @@ class TaskListViewModelTest {
         val repository = FakeRepository(flow { emit(listOf(task(1, "eins"))) })
         val viewModel = viewModelWith(repository)
 
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
 
         assertEquals(listOf(TaskId(1) to TaskStatus.DONE), repository.statusWrites)
         assertEquals(null, viewModel.notice.value)
@@ -213,7 +213,7 @@ class TaskListViewModelTest {
         source.emit(listOf(task(1, "eins")))
         val before = viewModel.state.value
 
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
 
         assertEquals(ListNotice.StatusSaveFailed, viewModel.notice.value)
         assertEquals(null, viewModel.announcement.value)
@@ -233,7 +233,7 @@ class TaskListViewModelTest {
     fun `the failure notice is cleared once it was shown`() = runTest {
         val repository = FakeRepository(emptyFlow(), WriteResult.Failure(WriteError.STORAGE_FAILURE))
         val viewModel = viewModelWith(repository)
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
         viewModel.onNoticeShown(viewModel.notice.value!!)
         assertEquals(null, viewModel.notice.value)
     }
@@ -242,7 +242,7 @@ class TaskListViewModelTest {
     fun `the announcement does not reveal a title in its text form`() = runTest {
         val repository = FakeRepository(flow { emit(listOf(task(1, "GEHEIMER-TITEL"))) })
         val viewModel = viewModelWith(repository)
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
         assertFalse(viewModel.announcement.value.toString().contains("GEHEIMER"))
     }
 
@@ -309,7 +309,7 @@ class TaskListViewModelTest {
     fun `checking off while done tasks are hidden raises the hidden notice and no announcement`() = runTest {
         val viewModel = viewModelWith(FakeRepository(flow { emit(listOf(task(1, "eins"))) }), FakeListSettings(initial = true))
 
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
 
         val notice = viewModel.notice.value as ListNotice.DoneHidden
         assertEquals(TaskId(1), notice.id)
@@ -320,7 +320,7 @@ class TaskListViewModelTest {
     fun `checking off while done tasks are shown announces as before and raises no notice`() = runTest {
         val viewModel = viewModelWith(FakeRepository(flow { emit(listOf(task(1, "eins"))) }), FakeListSettings(initial = false))
 
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
 
         assertEquals(null, viewModel.notice.value)
         assertEquals(ListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE), viewModel.announcement.value)
@@ -331,7 +331,7 @@ class TaskListViewModelTest {
         val repository = FakeRepository(emptyFlow(), WriteResult.Failure(WriteError.STORAGE_FAILURE))
         val viewModel = viewModelWith(repository, FakeListSettings(initial = true))
 
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
 
         assertEquals(ListNotice.StatusSaveFailed, viewModel.notice.value)
     }
@@ -341,7 +341,7 @@ class TaskListViewModelTest {
         val repository = FakeRepository(emptyFlow(), WriteResult.Failure(WriteError.STORAGE_FAILURE))
         val settings = FakeListSettings(result = WriteResult.Failure(WriteError.STORAGE_FAILURE))
         val viewModel = viewModelWith(repository, settings)
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
         val older = viewModel.notice.value!!
         viewModel.onHideDoneChange(true) // a different notice replaces the first one
         val newer = viewModel.notice.value!!
@@ -355,7 +355,7 @@ class TaskListViewModelTest {
     @Test
     fun `the notice and the state do not reveal a title in their text form`() = runTest {
         val viewModel = viewModelWith(FakeRepository(flow { emit(listOf(task(1, "GEHEIMER-TITEL"))) }), FakeListSettings(initial = true))
-        viewModel.onListAnnouncement.StatusChanged(TaskId(1), TaskStatus.DONE)
+        viewModel.onStatusChange(TaskId(1), TaskStatus.DONE)
         assertFalse(viewModel.notice.value.toString().contains("GEHEIMER"))
     }
 

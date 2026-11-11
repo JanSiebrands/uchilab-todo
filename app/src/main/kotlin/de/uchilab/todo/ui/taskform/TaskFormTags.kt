@@ -12,6 +12,8 @@ object TaskFormTags {
     const val NOTE_COUNTER = "new_task_note_counter"
     const val SAVE = "new_task_save"
     const val CLOSE = "new_task_close"
+    const val DELETE = "task_form_delete"
+    const val DELETE_FAILED = "task_form_delete_failed"
     const val SAVE_FAILED = "new_task_save_failed"
     const val DISCARD_DIALOG = "new_task_discard_dialog"
     const val DISCARD_CONFIRM = "new_task_discard_confirm"

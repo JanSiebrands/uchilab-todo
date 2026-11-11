@@ -455,7 +455,7 @@ class TaskFormScreenTest {
                 AppTheme { TaskFormScreen(editing(), recorder) }
             }
         }
-        val delete = node(TaskFormTags.DELETE)
+        val delete = composeRule.onNodeWithTag(TaskFormTags.DELETE)
         delete.assertIsDisplayed()
         val config = delete.fetchSemanticsNode().config
         assertEquals(listOf(context.getString(R.string.task_delete_description)), config[SemanticsProperties.ContentDescription])

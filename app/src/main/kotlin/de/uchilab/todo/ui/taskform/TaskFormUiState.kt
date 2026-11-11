@@ -9,7 +9,7 @@ enum class TaskFormField { TITLE, NOTE }
  * What the input screen shows. Lengths and limits come from [TaskContent], the screen has no counting of its own.
  * [focusTick] is not saved; it makes a repeated request for the same field visible to the screen.
  * [editing] is the id of the task being edited, null for a new task; [original] is its stored content at the time
- * the form was opened (for the "unchanged" comparison). [saving] is only in memory: while true, input is locked.
+ * the form was opened (for the "unchanged" comparison). [saving] is only in memory and holds for every running write, saving or deleting: while true, input is locked.
  */
 class TaskFormUiState(
     val open: Boolean = false,
@@ -23,6 +23,7 @@ class TaskFormUiState(
     val editing: TaskId? = null,
     val original: TaskContent? = null,
     val saving: Boolean = false,
+    val deleteFailed: Boolean = false,
 ) {
     val titleLength: Int = TaskContent.titleLength(title)
     val noteLength: Int = TaskContent.noteLength(note)
@@ -50,6 +51,7 @@ interface TaskFormActions {
     fun onNoteChange(raw: String)
     fun onFocusChange(field: TaskFormField)
     fun onSave()
+    fun onDelete()
     fun onCloseRequest()
     fun onDiscardDismiss()
     fun onDiscardConfirm()

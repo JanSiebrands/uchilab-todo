@@ -17,12 +17,12 @@ class MainActivity : ComponentActivity() {
         val todoApplication = application as TodoApplication
         val repository = todoApplication.taskRepository
         val viewModel = ViewModelProvider(this, TaskListViewModel.factory(repository, todoApplication.listSettings))[TaskListViewModel::class.java]
-        val taskFormViewModel = ViewModelProvider(this, TaskFormViewModel.factory(repository))[TaskFormViewModel::class.java]
+        val taskFormViewModel = ViewModelProvider(this, TaskFormViewModel.factory(repository, viewModel::onTaskDeleted))[TaskFormViewModel::class.java]
         setContent {
             AppTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 val notice by viewModel.notice.collectAsStateWithLifecycle()
-                val statusAnnouncement by viewModel.statusAnnouncement.collectAsStateWithLifecycle()
+                val statusAnnouncement by viewModel.announcement.collectAsStateWithLifecycle()
                 // Back is taken over while the input is open; it asks before discarding and does nothing while saving.
                 BackHandler(enabled = taskFormViewModel.state.open) { taskFormViewModel.onCloseRequest() }
                 MainScreen(
@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
                     onHideDoneChange = viewModel::onHideDoneChange,
                     notice = notice,
                     onNoticeShown = viewModel::onNoticeShown,
+                    onUndo = viewModel::onUndo,
                     statusAnnouncement = statusAnnouncement,
                 )
             }

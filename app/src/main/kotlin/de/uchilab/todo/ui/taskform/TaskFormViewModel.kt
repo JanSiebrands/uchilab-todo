@@ -12,10 +12,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import de.uchilab.todo.domain.Task
 import de.uchilab.todo.domain.TaskContent
 import de.uchilab.todo.domain.TaskId
+import de.uchilab.todo.domain.TaskReadException
 import de.uchilab.todo.domain.TaskRepository
 import de.uchilab.todo.domain.Validated
 import de.uchilab.todo.domain.InvalidReason
 import de.uchilab.todo.domain.WriteResult
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -26,6 +28,7 @@ import kotlinx.coroutines.launch
 class TaskFormViewModel(
     private val repository: TaskRepository,
     private val savedState: SavedStateHandle,
+    private val onDeleted: (Task) -> Unit,
 ) : ViewModel(), TaskFormActions {
     var state: TaskFormUiState by mutableStateOf(restore())
         private set
@@ -99,6 +102,7 @@ class TaskFormViewModel(
                 copy(
                     titleMissingShown = InvalidReason.TITLE_EMPTY in reasons,
                     saveFailed = false,
+                    deleteFailed = false,
                     focus = field,
                     focusTick = state.focusTick + 1,
                 ),
@@ -108,7 +112,7 @@ class TaskFormViewModel(
         val content = (validated as Validated.Valid).content
         val editing = state.editing
         if (editing != null && content == state.original) return close()
-        update(copy(saveFailed = false, saving = true))
+        update(copy(saveFailed = false, deleteFailed = false, saving = true))
         viewModelScope.launch {
             try {
                 if (editing == null) saveNew(content) else saveEdit(editing, content)
@@ -137,6 +141,39 @@ class TaskFormViewModel(
                 close()
             }
             is WriteResult.Failure -> update(copy(saveFailed = true, saving = false))
+        }
+    }
+
+    /**
+     * Deletes the stored task at once (privacy V4). The copy for the undo is read from the store before, not taken from
+     * the form, so undo brings back the stored version and not what was typed. It only goes to [onDeleted].
+     */
+    override fun onDelete() {
+        val id = state.editing
+        if (state.saving || !state.open || id == null) return
+        update(copy(saveFailed = false, deleteFailed = false, saving = true))
+        viewModelScope.launch {
+            try {
+                deleteStored(id)
+            } finally {
+                if (state.saving) update(copy(saving = false))
+            }
+        }
+    }
+
+    private suspend fun deleteStored(id: TaskId) {
+        val stored = try {
+            repository.observeTasks().first().firstOrNull { it.id == id }
+        } catch (_: TaskReadException) {
+            null
+        }
+        if (stored == null) return update(copy(deleteFailed = true, saving = false))
+        when (repository.delete(id)) {
+            is WriteResult.Success -> {
+                onDeleted(stored)
+                close()
+            }
+            is WriteResult.Failure -> update(copy(deleteFailed = true, saving = false))
         }
     }
 
@@ -173,9 +210,10 @@ class TaskFormViewModel(
         focus: TaskFormField? = state.focus,
         focusTick: Int = state.focusTick,
         saving: Boolean = state.saving,
+        deleteFailed: Boolean = state.deleteFailed,
     ) = TaskFormUiState(
         state.open, title, note, titleMissingShown, saveFailed, discardDialog, focus, focusTick,
-        state.editing, state.original, saving,
+        state.editing, state.original, saving, deleteFailed,
     )
 
     /** Takes over the new state and mirrors it into the saved state; a closed input leaves no key behind. */
@@ -190,6 +228,7 @@ class TaskFormViewModel(
         savedState[KEY_NOTE] = new.note
         savedState[KEY_TITLE_MISSING] = new.titleMissingShown
         savedState[KEY_SAVE_FAILED] = new.saveFailed
+        savedState[KEY_DELETE_FAILED] = new.deleteFailed
         savedState[KEY_DISCARD_DIALOG] = new.discardDialog
         val editing = new.editing
         val original = new.original
@@ -220,6 +259,7 @@ class TaskFormViewModel(
             note = savedState.get<String>(KEY_NOTE) ?: "",
             titleMissingShown = savedState.get<Boolean>(KEY_TITLE_MISSING) ?: false,
             saveFailed = savedState.get<Boolean>(KEY_SAVE_FAILED) ?: false,
+            deleteFailed = savedState.get<Boolean>(KEY_DELETE_FAILED) ?: false,
             discardDialog = savedState.get<Boolean>(KEY_DISCARD_DIALOG) ?: false,
             focus = savedState.get<String>(KEY_FOCUS)?.let { name -> TaskFormField.entries.firstOrNull { it.name == name } },
             editing = if (original != null) editingId?.let(::TaskId) else null,
@@ -245,13 +285,14 @@ class TaskFormViewModel(
         private const val KEY_NOTE = "note"
         private const val KEY_TITLE_MISSING = "titleMissingShown"
         private const val KEY_SAVE_FAILED = "saveFailed"
+        private const val KEY_DELETE_FAILED = "deleteFailed"
         private const val KEY_DISCARD_DIALOG = "discardDialog"
         private const val KEY_FOCUS = "focus"
         private const val KEY_EDITING = "editingId"
         private const val KEY_ORIGINAL_TITLE = "originalTitle"
         private const val KEY_ORIGINAL_NOTE = "originalNote"
         private val KEYS = listOf(
-            KEY_OPEN, KEY_TITLE, KEY_NOTE, KEY_TITLE_MISSING, KEY_SAVE_FAILED, KEY_DISCARD_DIALOG, KEY_FOCUS,
+            KEY_OPEN, KEY_TITLE, KEY_NOTE, KEY_TITLE_MISSING, KEY_SAVE_FAILED, KEY_DELETE_FAILED, KEY_DISCARD_DIALOG, KEY_FOCUS,
             KEY_EDITING, KEY_ORIGINAL_TITLE, KEY_ORIGINAL_NOTE,
         )
 
@@ -262,7 +303,7 @@ class TaskFormViewModel(
             return text.substring(0, end)
         }
 
-        fun factory(repository: TaskRepository) =
-            viewModelFactory { initializer { TaskFormViewModel(repository, createSavedStateHandle()) } }
+        fun factory(repository: TaskRepository, onDeleted: (Task) -> Unit) =
+            viewModelFactory { initializer { TaskFormViewModel(repository, createSavedStateHandle(), onDeleted) } }
     }
 }
