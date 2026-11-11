@@ -7,7 +7,7 @@
 #   light-de: input-font200 (font scale 2.0); dark-de: input-landscape (user rotation 1);
 #   every combination: edit; light-de and dark-en: edit-discard-dialog; light-en: edit-landscape (UCH-137);
 #   every combination: list-done, list-hidden; dark-de: list-hidden-checked; dark-en: list-all-done;
-#   light-de and dark-en: list-all-hidden (UCH-168).
+#   light-de and dark-en: list-all-hidden (UCH-168); light-de and dark-en: list-deleted (UCH-170).
 # Before each picture the script waits for the state's test tag (operation). The pictures are evidence, not a
 # check (UCH-116 R2): whether they show the right state, language and theme, the designer and the PO judge by
 # looking at them. The discard dialogs are opened by tapping close, as with a finger (UCH-99). Every setting is
@@ -49,6 +49,7 @@ discard_confirm_tag="new_task_discard_confirm"
 discard_keep_tag="new_task_discard_keep"
 close_tag="new_task_close"
 item_note_tag="task_item_note"
+delete_tag="task_form_delete"
 
 reset_display() {
   timeout 10 adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
@@ -152,6 +153,21 @@ else
   tap "edit" "$close_tag"
 fi
 wait_until 30 "edit: form still open after closing" gone "$form_tag"
+
+# Delete with undo (UCH-170, plan UCH-166 section 8, Z46/Z47): open an entry of the list seed, tap delete as with a
+# finger and take the list with the undo hint within its 10 s. Then the list seed again, so later steps keep it.
+if [ "$mode-$lang" = light-de ] || [ "$mode-$lang" = dark-en ]; then
+  open_edit "list-deleted"
+  tap "list-deleted" "$delete_tag"
+  wait_until 30 "list-deleted: form still open after deleting" gone "$form_tag"
+  wait_until 8 "list-deleted: no undo hint after deleting" shown "$snackbar_tag"
+  shot list-deleted "$snackbar_tag"
+  timeout 30 adb shell am force-stop "$package"
+  wait_process_gone
+  install_db "$seed/tasks.db"
+  start_app "list-deleted reset"
+  wait_until 90 "list-deleted reset: list not shown" shown "$list_tag"
+fi
 
 if [ "$mode-$lang" = light-en ] || [ "$mode-$lang" = dark-de ]; then
   open_new_task "input"

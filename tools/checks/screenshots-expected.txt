@@ -39,3 +39,5 @@ release-edit-dark-en.png
 release-edit-discard-dialog-light-de.png
 release-edit-discard-dialog-dark-en.png
 release-edit-landscape-light-en.png
+release-list-deleted-light-de.png
+release-list-deleted-dark-en.png
