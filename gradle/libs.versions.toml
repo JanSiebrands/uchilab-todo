@@ -6,7 +6,7 @@ activityCompose = "1.13.0"
 junit = "4.13.2"
 robolectric = "4.17"
 room3 = "3.0.3"
-ksp = "2.3.13"
+ksp = "2.3.14"
 sqlite = "2.7.1"
 coroutines = "1.11.0"
 # Only a constraint for test and KSP classpaths (UCH-68): newer than what Robolectric and Room bring in.
