@@ -3,6 +3,6 @@
   "private": true,
   "description": "Pinned Renovate CLI for .github/workflows/renovate.yml (exact version, transitive versions locked in package-lock.json).",
   "dependencies": {
-    "renovate": "44.221.5"
+    "renovate": "44.257.0"
   }
 }
